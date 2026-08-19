@@ -1,0 +1,29 @@
+{
+  "name": "company-dsh",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0",
+    "pnpm": "11.7.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present run build",
+    "contracts:generate": "pnpm --filter @company/contracts run generate",
+    "contracts:check": "pnpm --filter @company/contracts run check",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "test": "pnpm -r --if-present run test",
+    "test:integration": "pnpm -r --if-present run test:integration",
+    "typecheck": "pnpm -r --if-present run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "oxlint": "^1.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.8"
+  }
+}

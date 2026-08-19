@@ -1,0 +1,20 @@
+{
+  "name": "@company/business-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@company/contracts": "workspace:*",
+    "@company/db": "workspace:*",
+    "@company/observability": "workspace:*",
+    "@company/test-fixtures": "workspace:*",
+    "drizzle-orm": "^0.44.0",
+    "fastify": "^5.0.0",
+    "jose": "^6.0.0",
+    "pg": "^8.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.0"
+  }
+}

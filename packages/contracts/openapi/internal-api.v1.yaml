@@ -1,0 +1,299 @@
+openapi: 3.1.0
+info:
+  title: Company DSH Internal API
+  version: 1.0.0
+  description: >-
+    Frozen service-to-service contract for the three-worktree baseline. These
+    endpoints are never exposed by the public reverse proxy. Callers send a
+    short-lived service token and an X-Request-Id for correlation.
+servers:
+  - url: /internal/v1
+security:
+  - serviceAuth: []
+tags:
+  - name: Runners
+  - name: Automation
+paths:
+  /runners/ensure:
+    post:
+      tags: [Runners]
+      operationId: ensureRunner
+      parameters:
+        - { $ref: '#/components/parameters/RequestId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnsureRunnerRequest' }
+      responses:
+        '200':
+          description: Existing or newly ready primary runner for the user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunnerDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /runners/{runner_id}:
+    get:
+      tags: [Runners]
+      operationId: getInternalRunner
+      parameters:
+        - { $ref: '#/components/parameters/RunnerId' }
+        - { $ref: '#/components/parameters/RequestId' }
+      responses:
+        '200':
+          description: Runner health and activity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunnerDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /runners/{runner_id}/stop:
+    post:
+      tags: [Runners]
+      operationId: stopInternalRunner
+      parameters:
+        - { $ref: '#/components/parameters/RunnerId' }
+        - { $ref: '#/components/parameters/RequestId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StopRunnerRequest' }
+      responses:
+        '202':
+          description: Graceful stop accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationAccepted' }
+        default: { $ref: '#/components/responses/Problem' }
+  /runners/{runner_id}/reconcile:
+    post:
+      tags: [Runners]
+      operationId: reconcileRunner
+      parameters:
+        - { $ref: '#/components/parameters/RunnerId' }
+        - { $ref: '#/components/parameters/RequestId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReconcileRunnerRequest' }
+      responses:
+        '200':
+          description: Runner record after comparison with Docker state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunnerDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /automation-runs:
+    post:
+      tags: [Automation]
+      operationId: createAutomationRun
+      parameters:
+        - { $ref: '#/components/parameters/RequestId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAutomationRunRequest' }
+      responses:
+        '202':
+          description: Automation run accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationRun' }
+        default: { $ref: '#/components/responses/Problem' }
+  /automation-runs/{run_id}:
+    get:
+      tags: [Automation]
+      operationId: getAutomationRun
+      parameters:
+        - { $ref: '#/components/parameters/AutomationRunId' }
+        - { $ref: '#/components/parameters/RequestId' }
+      responses:
+        '200':
+          description: Automation state and structured result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationRun' }
+        default: { $ref: '#/components/responses/Problem' }
+components:
+  securitySchemes:
+    serviceAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: short-lived-service-token
+  parameters:
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 128 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 128 }
+    RunnerId:
+      name: runner_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Uuid' }
+    AutomationRunId:
+      name: run_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Uuid' }
+  responses:
+    Problem:
+      description: RFC 9457 compatible problem response
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+  schemas:
+    Uuid: { type: string, format: uuid }
+    Timestamp: { type: string, format: date-time }
+    RunnerState: { type: string, enum: [stopped, starting, ready, busy, idle, stopping, failed] }
+    RunnerHealth: { type: string, enum: [unknown, starting, healthy, unhealthy] }
+    AutomationPurpose: { type: string, enum: [task_split, task_review, daily_rewrite] }
+    AutomationOutputSchemaId:
+      type: string
+      enum: [company.requirement-split.v1, company.task-review.v1, company.daily-rewrite.v1]
+    AutomationRunStatus: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+    ProblemDetails:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, detail, code, request_id]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { type: string }
+        request_id: { type: string }
+        field_errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, code, message]
+            properties:
+              field: { type: string }
+              code: { type: string }
+              message: { type: string }
+    EnsureRunnerRequest:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, user_id, config_version]
+      properties:
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        user_id: { $ref: '#/components/schemas/Uuid' }
+        config_version: { type: integer, minimum: 1 }
+    RunnerDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tenant_id
+        - user_id
+        - state
+        - health
+        - internal_endpoint
+        - active_runs
+        - image_version
+        - config_version
+        - lease_expires_at
+        - last_activity_at
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        user_id: { $ref: '#/components/schemas/Uuid' }
+        state: { $ref: '#/components/schemas/RunnerState' }
+        health: { $ref: '#/components/schemas/RunnerHealth' }
+        internal_endpoint:
+          oneOf: [{ type: string, format: uri }, { type: 'null' }]
+        active_runs: { type: integer, minimum: 0 }
+        image_version: { type: string }
+        config_version: { type: integer, minimum: 1 }
+        lease_expires_at:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+        last_activity_at:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+    StopRunnerRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, grace_period_seconds]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        grace_period_seconds: { type: integer, minimum: 0, maximum: 300 }
+    ReconcileRunnerRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    OperationAccepted:
+      type: object
+      additionalProperties: false
+      required: [operation_id, status]
+      properties:
+        operation_id: { $ref: '#/components/schemas/Uuid' }
+        status: { type: string, const: accepted }
+    CreateAutomationRunRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - actor_user_id
+        - purpose
+        - correlation_id
+        - input
+        - output_schema_id
+      properties:
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        actor_user_id: { $ref: '#/components/schemas/Uuid' }
+        purpose: { $ref: '#/components/schemas/AutomationPurpose' }
+        correlation_id: { $ref: '#/components/schemas/Uuid' }
+        input: { type: object, additionalProperties: true }
+        output_schema_id: { $ref: '#/components/schemas/AutomationOutputSchemaId' }
+    AutomationRunError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    AutomationRun:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tenant_id
+        - actor_user_id
+        - purpose
+        - correlation_id
+        - status
+        - output_schema_id
+        - output
+        - error
+        - created_at
+        - completed_at
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        actor_user_id: { $ref: '#/components/schemas/Uuid' }
+        purpose: { $ref: '#/components/schemas/AutomationPurpose' }
+        correlation_id: { $ref: '#/components/schemas/Uuid' }
+        status: { $ref: '#/components/schemas/AutomationRunStatus' }
+        output_schema_id: { $ref: '#/components/schemas/AutomationOutputSchemaId' }
+        output: { type: [object, 'null'], additionalProperties: true }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/AutomationRunError' }
+            - type: 'null'
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        completed_at:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]

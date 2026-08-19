@@ -1,0 +1,9 @@
+{
+  "name": "@company/test-fixtures",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./fixture-v1": "./fixture-v1.json"
+  }
+}

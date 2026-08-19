@@ -1,0 +1,10 @@
+{
+  "name": "@company/dsh-extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@company/contracts": "workspace:*",
+    "@company/test-fixtures": "workspace:*"
+  }
+}

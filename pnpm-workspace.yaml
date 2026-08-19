@@ -1,0 +1,22 @@
+packages:
+  - apps/*
+  - services/*
+  - runtimes/*
+  - extensions/*
+  - integrations/*
+  - packages/*
+  - '!vendor/**'
+
+allowBuilds:
+  argon2: true
+  cpu-features: false
+  esbuild: true
+  msw: false
+  protobufjs: false
+  ssh2: false
+
+sharedWorkspaceLockfile: true
+
+peerDependencyRules:
+  allowedVersions:
+    'openapi-typescript>typescript': '6'

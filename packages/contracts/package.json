@@ -1,0 +1,22 @@
+{
+  "name": "@company/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./company-api": "./generated/company-api.v1.d.ts",
+    "./internal-api": "./generated/internal-api.v1.d.ts",
+    "./knowledge-tool-schema": "./schemas/tools/knowledge.v1.schema.json"
+  },
+  "scripts": {
+    "generate": "pnpm run generate:company && pnpm run generate:internal && pnpm run generate:format",
+    "generate:company": "openapi-typescript openapi/company-api.v1.yaml -o generated/company-api.v1.d.ts",
+    "generate:format": "prettier --write generated/*.d.ts",
+    "generate:internal": "openapi-typescript openapi/internal-api.v1.yaml -o generated/internal-api.v1.d.ts",
+    "check": "pnpm run generate && git diff --exit-code -- generated"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.0.0",
+    "prettier": "^3.0.0"
+  }
+}

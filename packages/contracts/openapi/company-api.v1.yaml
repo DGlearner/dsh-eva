@@ -1,0 +1,1636 @@
+openapi: 3.1.0
+info:
+  title: Company DSH API
+  version: 1.0.0
+  description: >-
+    Frozen browser-facing contract for the three-worktree baseline. All paths are
+    served below /company-api/v1. Mutations require the company_session cookie,
+    X-CSRF-Token, and expected_version where the request schema declares it.
+servers:
+  - url: /company-api/v1
+security:
+  - cookieAuth: []
+tags:
+  - name: Identity
+  - name: ModelConfig
+  - name: Sessions
+  - name: Admin
+  - name: Knowledge
+  - name: Requirements
+  - name: Tasks
+  - name: DailyReports
+  - name: Automation
+paths:
+  /auth/login:
+    post:
+      tags: [Identity]
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/MeResponse' }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/logout:
+    post:
+      tags: [Identity]
+      operationId: logout
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '204': { description: Logged out }
+        default: { $ref: '#/components/responses/Problem' }
+  /auth/change-password:
+    post:
+      tags: [Identity]
+      operationId: changePassword
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204': { description: Password changed }
+        default: { $ref: '#/components/responses/Problem' }
+  /me:
+    get:
+      tags: [Identity]
+      operationId: getMe
+      responses:
+        '200': { $ref: '#/components/responses/MeResponse' }
+        default: { $ref: '#/components/responses/Problem' }
+  /model-config:
+    get:
+      tags: [ModelConfig]
+      operationId: getModelConfig
+      responses:
+        '200':
+          description: Current user's model configuration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelConfig' }
+        default: { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [ModelConfig]
+      operationId: updateModelConfig
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateModelConfigRequest' }
+      responses:
+        '200':
+          description: Updated model configuration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelConfig' }
+        default: { $ref: '#/components/responses/Problem' }
+  /model-config/test:
+    post:
+      tags: [ModelConfig]
+      operationId: testModelConfig
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestModelConfigRequest' }
+      responses:
+        '200':
+          description: Connectivity test result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelConfigTestResult' }
+        default: { $ref: '#/components/responses/Problem' }
+  /sessions:
+    get:
+      tags: [Sessions]
+      operationId: listSessions
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/SessionStatus' }
+      responses:
+        '200':
+          description: Current user's session index
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionPage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /sessions/{session_id}:
+    parameters:
+      - { $ref: '#/components/parameters/SessionId' }
+    get:
+      tags: [Sessions]
+      operationId: getSession
+      responses:
+        '200':
+          description: Session metadata
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionSummary' }
+        default: { $ref: '#/components/responses/Problem' }
+  /sessions/{session_id}/archive:
+    post:
+      tags: [Sessions]
+      operationId: archiveSession
+      parameters:
+        - { $ref: '#/components/parameters/SessionId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedCommand' }
+      responses:
+        '200':
+          description: Archived session metadata
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionSummary' }
+        default: { $ref: '#/components/responses/Problem' }
+  /admin/users:
+    get:
+      tags: [Admin]
+      operationId: listUsers
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/UserStatus' }
+      responses:
+        '200':
+          description: User administration page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPage' }
+        default: { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Admin]
+      operationId: createUser
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAdminView' }
+        default: { $ref: '#/components/responses/Problem' }
+  /admin/users/{user_id}:
+    patch:
+      tags: [Admin]
+      operationId: updateUser
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAdminView' }
+        default: { $ref: '#/components/responses/Problem' }
+  /admin/users/{user_id}/reset-password:
+    post:
+      tags: [Admin]
+      operationId: resetUserPassword
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetUserPasswordRequest' }
+      responses:
+        '204': { description: Temporary password replaced and existing sessions revoked }
+        default: { $ref: '#/components/responses/Problem' }
+  /admin/departments:
+    get:
+      tags: [Admin]
+      operationId: listDepartments
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Department administration page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DepartmentPage' }
+        default: { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Admin]
+      operationId: createDepartment
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDepartmentRequest' }
+      responses:
+        '201':
+          description: Department created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Department' }
+        default: { $ref: '#/components/responses/Problem' }
+  /admin/departments/{department_id}/members/{user_id}:
+    put:
+      tags: [Admin]
+      operationId: putDepartmentMember
+      parameters:
+        - { $ref: '#/components/parameters/DepartmentId' }
+        - { $ref: '#/components/parameters/UserId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DepartmentMembershipRequest' }
+      responses:
+        '200':
+          description: Department membership
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DepartmentMember' }
+        default: { $ref: '#/components/responses/Problem' }
+  /admin/runners:
+    get:
+      tags: [Admin]
+      operationId: listRunners
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: state
+          in: query
+          schema: { $ref: '#/components/schemas/RunnerState' }
+      responses:
+        '200':
+          description: Runner administration page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunnerPage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /admin/runners/{runner_id}/stop:
+    post:
+      tags: [Admin]
+      operationId: stopRunner
+      parameters:
+        - { $ref: '#/components/parameters/RunnerId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StopRunnerRequest' }
+      responses:
+        '202':
+          description: Stop accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationAccepted' }
+        default: { $ref: '#/components/responses/Problem' }
+  /knowledge/categories:
+    get:
+      tags: [Knowledge]
+      operationId: listKnowledgeCategories
+      parameters:
+        - { $ref: '#/components/parameters/KnowledgeScope' }
+      responses:
+        '200':
+          description: Categories visible for the scope
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/KnowledgeCategory' }
+        default: { $ref: '#/components/responses/Problem' }
+  /knowledge/documents:
+    get:
+      tags: [Knowledge]
+      operationId: listKnowledgeDocuments
+      parameters:
+        - { $ref: '#/components/parameters/KnowledgeScope' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/KnowledgeDocumentStatus' }
+      responses:
+        '200':
+          description: Knowledge documents
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDocumentPage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /knowledge/uploads:
+    post:
+      tags: [Knowledge]
+      operationId: createKnowledgeUpload
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FakeKnowledgeUploadRequest' }
+      responses:
+        '202':
+          description: Fake upload accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeUpload' }
+        default: { $ref: '#/components/responses/Problem' }
+  /knowledge/uploads/{upload_id}:
+    get:
+      tags: [Knowledge]
+      operationId: getKnowledgeUpload
+      parameters: [{ $ref: '#/components/parameters/UploadId' }]
+      responses:
+        '200':
+          description: Upload state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeUpload' }
+        default: { $ref: '#/components/responses/Problem' }
+  /knowledge/documents/{document_id}/archive:
+    post:
+      tags: [Knowledge]
+      operationId: archiveKnowledgeDocument
+      parameters:
+        - { $ref: '#/components/parameters/DocumentId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedReasonCommand' }
+      responses:
+        '200':
+          description: Archived document
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDocument' }
+        default: { $ref: '#/components/responses/Problem' }
+  /knowledge/documents/{document_id}/restore:
+    post:
+      tags: [Knowledge]
+      operationId: restoreKnowledgeDocument
+      parameters:
+        - { $ref: '#/components/parameters/DocumentId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedReasonCommand' }
+      responses:
+        '200':
+          description: Restored document
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDocument' }
+        default: { $ref: '#/components/responses/Problem' }
+  /knowledge/documents/{document_id}/reindex:
+    post:
+      tags: [Knowledge]
+      operationId: reindexKnowledgeDocument
+      parameters:
+        - { $ref: '#/components/parameters/DocumentId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedCommand' }
+      responses:
+        '202':
+          description: Fake reindex accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeUpload' }
+        default: { $ref: '#/components/responses/Problem' }
+  /requirements:
+    get:
+      tags: [Requirements]
+      operationId: listRequirements
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: view
+          in: query
+          schema: { type: string, enum: [mine, department] }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/RequirementStatus' }
+      responses:
+        '200':
+          description: Requirements
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RequirementPage' }
+        default: { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Requirements]
+      operationId: createRequirement
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRequirementRequest' }
+      responses:
+        '201':
+          description: Requirement created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Requirement' }
+        default: { $ref: '#/components/responses/Problem' }
+  /requirements/{requirement_id}:
+    parameters: [{ $ref: '#/components/parameters/RequirementId' }]
+    get:
+      tags: [Requirements]
+      operationId: getRequirement
+      responses:
+        '200':
+          description: Requirement detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RequirementDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [Requirements]
+      operationId: updateRequirement
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateRequirementRequest' }
+      responses:
+        '200':
+          description: Requirement updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Requirement' }
+        default: { $ref: '#/components/responses/Problem' }
+  /requirements/{requirement_id}/split-runs:
+    post:
+      tags: [Requirements]
+      operationId: startRequirementSplit
+      parameters:
+        - { $ref: '#/components/parameters/RequirementId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedCommand' }
+      responses:
+        '202':
+          description: Split automation accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationOperation' }
+        default: { $ref: '#/components/responses/Problem' }
+  /requirements/{requirement_id}/publish:
+    post:
+      tags: [Requirements]
+      operationId: publishRequirement
+      parameters:
+        - { $ref: '#/components/parameters/RequirementId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedCommand' }
+      responses:
+        '200':
+          description: Published requirement and tasks
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RequirementDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /requirements/{requirement_id}/cancel:
+    post:
+      tags: [Requirements]
+      operationId: cancelRequirement
+      parameters:
+        - { $ref: '#/components/parameters/RequirementId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedReasonCommand' }
+      responses:
+        '200':
+          description: Cancelled requirement
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Requirement' }
+        default: { $ref: '#/components/responses/Problem' }
+  /requirements/{requirement_id}/apply-split:
+    post:
+      tags: [Requirements]
+      operationId: applyRequirementSplit
+      parameters:
+        - { $ref: '#/components/parameters/RequirementId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplySplitRequest' }
+      responses:
+        '200':
+          description: Applied task drafts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RequirementDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /tasks:
+    get:
+      tags: [Tasks]
+      operationId: listTasks
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: view
+          in: query
+          schema: { type: string, enum: [published_by_me, assigned_to_me, incomplete, completed] }
+        - name: requirement_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: assignee_user_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/TaskStatus' }
+        - name: from
+          in: query
+          schema: { $ref: '#/components/schemas/DateString' }
+        - name: to
+          in: query
+          schema: { $ref: '#/components/schemas/DateString' }
+      responses:
+        '200':
+          description: Tasks
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskPage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /tasks/{task_id}:
+    get:
+      tags: [Tasks]
+      operationId: getTask
+      parameters: [{ $ref: '#/components/parameters/TaskId' }]
+      responses:
+        '200':
+          description: Task detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /tasks/{task_id}/transitions:
+    post:
+      tags: [Tasks]
+      operationId: transitionTask
+      parameters:
+        - { $ref: '#/components/parameters/TaskId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskTransitionRequest' }
+      responses:
+        '200':
+          description: Transitioned task
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /tasks/{task_id}/submissions:
+    post:
+      tags: [Tasks]
+      operationId: createTaskSubmission
+      parameters:
+        - { $ref: '#/components/parameters/TaskId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTaskSubmissionRequest' }
+      responses:
+        '201':
+          description: Task submission created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskSubmission' }
+        default: { $ref: '#/components/responses/Problem' }
+  /tasks/{task_id}/review-runs:
+    post:
+      tags: [Tasks]
+      operationId: startTaskReview
+      parameters:
+        - { $ref: '#/components/parameters/TaskId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartTaskReviewRequest' }
+      responses:
+        '202':
+          description: Review accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationOperation' }
+        default: { $ref: '#/components/responses/Problem' }
+  /tasks/{task_id}/accept:
+    post:
+      tags: [Tasks]
+      operationId: acceptTask
+      parameters:
+        - { $ref: '#/components/parameters/TaskId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedReasonCommand' }
+      responses:
+        '200':
+          description: Accepted task
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /tasks/{task_id}/return:
+    post:
+      tags: [Tasks]
+      operationId: returnTask
+      parameters:
+        - { $ref: '#/components/parameters/TaskId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedReasonCommand' }
+      responses:
+        '200':
+          description: Returned task
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /automation-operations/{operation_id}:
+    get:
+      tags: [Automation]
+      operationId: getAutomationOperation
+      parameters: [{ $ref: '#/components/parameters/OperationId' }]
+      responses:
+        '200':
+          description: Automation state/result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationOperation' }
+        default: { $ref: '#/components/responses/Problem' }
+  /daily-reports:
+    get:
+      tags: [DailyReports]
+      operationId: listDailyReports
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - name: from
+          in: query
+          schema: { $ref: '#/components/schemas/DateString' }
+        - name: to
+          in: query
+          schema: { $ref: '#/components/schemas/DateString' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/DailyReportStatus' }
+      responses:
+        '200':
+          description: Current user's reports
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DailyReportPage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /daily-reports/{work_date}:
+    parameters: [{ $ref: '#/components/parameters/WorkDate' }]
+    get:
+      tags: [DailyReports]
+      operationId: getDailyReport
+      responses:
+        '200':
+          description: Daily report
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DailyReport' }
+        default: { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [DailyReports]
+      operationId: upsertDailyReport
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpsertDailyReportRequest' }
+      responses:
+        '200':
+          description: Daily report saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DailyReport' }
+        default: { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [DailyReports]
+      operationId: deleteDailyReport
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - name: expected_version
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '204': { description: Soft deleted }
+        default: { $ref: '#/components/responses/Problem' }
+  /daily-reports/{work_date}/publish:
+    post:
+      tags: [DailyReports]
+      operationId: publishDailyReport
+      parameters:
+        - { $ref: '#/components/parameters/WorkDate' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedCommand' }
+      responses:
+        '200':
+          description: Published daily report
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DailyReport' }
+        default: { $ref: '#/components/responses/Problem' }
+  /daily-reports/{work_date}/rewrite-runs:
+    post:
+      tags: [DailyReports]
+      operationId: startDailyReportRewrite
+      parameters:
+        - { $ref: '#/components/parameters/WorkDate' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DailyRewriteRequest' }
+      responses:
+        '202':
+          description: Rewrite accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationOperation' }
+        default: { $ref: '#/components/responses/Problem' }
+  /daily-reports/{work_date}/apply-rewrite:
+    post:
+      tags: [DailyReports]
+      operationId: applyDailyReportRewrite
+      parameters:
+        - { $ref: '#/components/parameters/WorkDate' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplyDailyRewriteRequest' }
+      responses:
+        '200':
+          description: Applied daily report rewrite
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DailyReport' }
+        default: { $ref: '#/components/responses/Problem' }
+  /departments/{department_id}/daily-reports:
+    get:
+      tags: [DailyReports]
+      operationId: listDepartmentDailyReports
+      parameters:
+        - { $ref: '#/components/parameters/DepartmentId' }
+        - name: date
+          in: query
+          schema: { $ref: '#/components/schemas/DateString' }
+        - name: from
+          in: query
+          schema: { $ref: '#/components/schemas/DateString' }
+        - name: to
+          in: query
+          schema: { $ref: '#/components/schemas/DateString' }
+        - name: member_user_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/DailyReportStatus' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Department reports and missing members
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DepartmentDailyReportView' }
+        default: { $ref: '#/components/responses/Problem' }
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: company_session
+  parameters:
+    CsrfToken: { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+    IdempotencyKey:
+      {
+        name: Idempotency-Key,
+        in: header,
+        required: true,
+        schema: { type: string, minLength: 8, maxLength: 128 },
+      }
+    Cursor: { name: cursor, in: query, schema: { type: [string, 'null'] } }
+    Limit:
+      { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+    UserId:
+      { name: user_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    DepartmentId:
+      {
+        name: department_id,
+        in: path,
+        required: true,
+        schema: { $ref: '#/components/schemas/Uuid' },
+      }
+    RunnerId:
+      { name: runner_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    SessionId:
+      {
+        name: session_id,
+        in: path,
+        required: true,
+        schema: { type: string, minLength: 1, maxLength: 255 },
+      }
+    UploadId:
+      { name: upload_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    DocumentId:
+      { name: document_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    RequirementId:
+      {
+        name: requirement_id,
+        in: path,
+        required: true,
+        schema: { $ref: '#/components/schemas/Uuid' },
+      }
+    TaskId:
+      { name: task_id, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' } }
+    OperationId:
+      {
+        name: operation_id,
+        in: path,
+        required: true,
+        schema: { $ref: '#/components/schemas/Uuid' },
+      }
+    WorkDate:
+      {
+        name: work_date,
+        in: path,
+        required: true,
+        schema: { $ref: '#/components/schemas/DateString' },
+      }
+    KnowledgeScope:
+      {
+        name: scope,
+        in: query,
+        required: true,
+        schema: { $ref: '#/components/schemas/KnowledgeScope' },
+      }
+  responses:
+    Problem:
+      description: RFC 9457 compatible problem response
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+    MeResponse:
+      description: Current authenticated context
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Me' }
+  schemas:
+    Uuid: { type: string, format: uuid }
+    Timestamp: { type: string, format: date-time }
+    DateString: { type: string, format: date, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    PlatformRole: { type: string, enum: [admin, member] }
+    OrgRole: { type: string, enum: [manager, member] }
+    UserStatus: { type: string, enum: [active, disabled] }
+    SessionStatus: { type: string, enum: [active, archived, interrupted, corrupted] }
+    RunnerState: { type: string, enum: [stopped, starting, ready, busy, idle, stopping, failed] }
+    KnowledgeScope: { type: string, enum: [company, personal] }
+    KnowledgeDocumentStatus:
+      { type: string, enum: [pending_review, ready, rejected, archived, pending_purge, purging] }
+    KnowledgeUploadStatus: { type: string, enum: [queued, running, succeeded, failed] }
+    RequirementStatus: { type: string, enum: [draft, published, cancelled] }
+    TaskStatus:
+      { type: string, enum: [planning, todo, in_progress, review, done, failed, cancelled] }
+    ReviewResult: { type: string, enum: [pass, fail, needs_review] }
+    AutomationRunStatus: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+    DailyReportStatus: { type: string, enum: [draft, published, deleted] }
+    ProblemDetails:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, detail, code, request_id]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { type: string }
+        request_id: { type: string }
+        field_errors:
+          type: array
+          items:
+            type: object
+            required: [field, code, message]
+            properties:
+              field: { type: string }
+              code: { type: string }
+              message: { type: string }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 100 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, minLength: 8, maxLength: 128 }
+        new_password: { type: string, minLength: 8, maxLength: 128 }
+    UserSummary:
+      type: object
+      required: [id, username, display_name, platform_role]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        username: { type: string }
+        display_name: { type: string }
+        platform_role: { $ref: '#/components/schemas/PlatformRole' }
+    Department:
+      type: object
+      required: [id, name, status, version]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        name: { type: string }
+        status: { type: string, enum: [active, disabled] }
+        version: { type: integer, minimum: 1 }
+    DepartmentMember:
+      type: object
+      required: [department_id, user_id, org_role, version]
+      properties:
+        department_id: { $ref: '#/components/schemas/Uuid' }
+        user_id: { $ref: '#/components/schemas/Uuid' }
+        org_role: { $ref: '#/components/schemas/OrgRole' }
+        version: { type: integer, minimum: 1 }
+    DepartmentPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Department' } }
+        next_cursor: { type: [string, 'null'] }
+    Me:
+      type: object
+      required: [user, department, csrf_token]
+      properties:
+        user: { $ref: '#/components/schemas/UserSummary' }
+        department:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [id, name, org_role]
+              properties:
+                id: { $ref: '#/components/schemas/Uuid' }
+                name: { type: string }
+                org_role: { $ref: '#/components/schemas/OrgRole' }
+        csrf_token: { type: string }
+    ModelConfig:
+      type: object
+      required:
+        [
+          base_url,
+          model,
+          temperature,
+          max_output_tokens,
+          has_api_key,
+          api_key_hint,
+          version,
+          updated_at,
+        ]
+      properties:
+        base_url: { type: string, format: uri }
+        model: { type: string, minLength: 1, maxLength: 200 }
+        temperature: { type: number, minimum: 0, maximum: 2 }
+        max_output_tokens: { type: [integer, 'null'], minimum: 1 }
+        has_api_key: { type: boolean }
+        api_key_hint: { type: [string, 'null'] }
+        version: { type: integer, minimum: 1 }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    UpdateModelConfigRequest:
+      type: object
+      additionalProperties: false
+      required: [base_url, model, expected_version]
+      properties:
+        base_url: { type: string, format: uri }
+        model: { type: string, minLength: 1, maxLength: 200 }
+        temperature: { type: number, minimum: 0, maximum: 2, default: 0.7 }
+        max_output_tokens: { type: [integer, 'null'], minimum: 1 }
+        api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
+        expected_version: { type: integer, minimum: 0 }
+    TestModelConfigRequest:
+      type: object
+      additionalProperties: false
+      required: [base_url, model]
+      properties:
+        base_url: { type: string, format: uri }
+        model: { type: string }
+        api_key: { type: [string, 'null'], writeOnly: true }
+    ModelConfigTestResult:
+      type: object
+      required: [ok, latency_ms, error_code]
+      properties:
+        ok: { type: boolean }
+        latency_ms: { type: integer, minimum: 0 }
+        error_code: { type: [string, 'null'] }
+    VersionedCommand:
+      type: object
+      additionalProperties: false
+      required: [expected_version]
+      properties:
+        expected_version: { type: integer, minimum: 1 }
+    VersionedReasonCommand:
+      allOf:
+        - { $ref: '#/components/schemas/VersionedCommand' }
+        - type: object
+          properties:
+            reason: { type: [string, 'null'], maxLength: 2000 }
+    SessionSummary:
+      type: object
+      required: [id, workspace_id, title, status, last_event_position, last_event_at, version]
+      properties:
+        id: { type: string }
+        workspace_id: { type: string }
+        title: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        last_event_position: { type: [integer, 'null'], minimum: 0 }
+        last_event_at:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+        version: { type: integer, minimum: 1 }
+    SessionPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/SessionSummary' } }
+        next_cursor: { type: [string, 'null'] }
+    CreateUserRequest:
+      type: object
+      additionalProperties: false
+      required: [username, display_name, temporary_password, platform_role]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 100 }
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        temporary_password: { type: string, minLength: 8, maxLength: 128, writeOnly: true }
+        platform_role: { $ref: '#/components/schemas/PlatformRole' }
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version]
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        platform_role: { $ref: '#/components/schemas/PlatformRole' }
+        status: { $ref: '#/components/schemas/UserStatus' }
+        expected_version: { type: integer, minimum: 1 }
+    ResetUserPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [temporary_password, expected_version]
+      properties:
+        temporary_password: { type: string, minLength: 8, maxLength: 128, writeOnly: true }
+        expected_version: { type: integer, minimum: 1 }
+    UserAdminView:
+      type: object
+      required: [id, username, display_name, platform_role, status, department, version]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        username: { type: string }
+        display_name: { type: string }
+        platform_role: { $ref: '#/components/schemas/PlatformRole' }
+        status: { $ref: '#/components/schemas/UserStatus' }
+        department:
+          oneOf: [{ $ref: '#/components/schemas/DepartmentMember' }, { type: 'null' }]
+        version: { type: integer, minimum: 1 }
+    UserPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/UserAdminView' } }
+        next_cursor: { type: [string, 'null'] }
+    CreateDepartmentRequest:
+      type: object
+      required: [name]
+      properties: { name: { type: string, minLength: 1, maxLength: 100 } }
+    DepartmentMembershipRequest:
+      type: object
+      additionalProperties: false
+      required: [org_role, expected_version]
+      properties:
+        org_role: { $ref: '#/components/schemas/OrgRole' }
+        expected_version: { type: integer, minimum: 0 }
+    RunnerView:
+      type: object
+      required: [id, user_id, state, image_version, last_activity_at, config_version]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        user_id: { $ref: '#/components/schemas/Uuid' }
+        state: { $ref: '#/components/schemas/RunnerState' }
+        image_version: { type: string }
+        last_activity_at:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+        config_version: { type: integer, minimum: 1 }
+    RunnerPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/RunnerView' } }
+        next_cursor: { type: [string, 'null'] }
+    StopRunnerRequest:
+      type: object
+      required: [reason, grace_period_seconds]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        grace_period_seconds: { type: integer, minimum: 0, maximum: 300 }
+    OperationAccepted:
+      type: object
+      required: [operation_id, status]
+      properties:
+        operation_id: { $ref: '#/components/schemas/Uuid' }
+        status: { type: string, enum: [accepted] }
+    KnowledgeCategory:
+      type: object
+      required: [code, name, scope]
+      properties:
+        code: { type: [string, 'null'] }
+        name: { type: string }
+        scope: { $ref: '#/components/schemas/KnowledgeScope' }
+    KnowledgeDocument:
+      type: object
+      required:
+        [
+          id,
+          knowledge_id,
+          scope,
+          owner_user_id,
+          category,
+          title,
+          file_name,
+          media_type,
+          size_bytes,
+          status,
+          version,
+          updated_at,
+        ]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        knowledge_id: { type: string }
+        scope: { $ref: '#/components/schemas/KnowledgeScope' }
+        owner_user_id:
+          oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }]
+        category:
+          {
+            type: [string, 'null'],
+            enum: [company-information, xiaopai-design, patent-document, null],
+          }
+        title: { type: string }
+        file_name: { type: string }
+        media_type: { type: string }
+        size_bytes: { type: integer, minimum: 0 }
+        status: { $ref: '#/components/schemas/KnowledgeDocumentStatus' }
+        version: { type: integer, minimum: 1 }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    KnowledgeDocumentPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/KnowledgeDocument' } }
+        next_cursor: { type: [string, 'null'] }
+    FakeKnowledgeUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [scope, title, file_name, media_type, size_bytes]
+      properties:
+        scope: { $ref: '#/components/schemas/KnowledgeScope' }
+        category: { type: [string, 'null'] }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        file_name: { type: string, minLength: 1, maxLength: 255 }
+        media_type: { type: string }
+        size_bytes: { type: integer, minimum: 0 }
+        scenario: { type: string, enum: [success, fail], default: success }
+    KnowledgeUpload:
+      type: object
+      required: [id, document_id, status, progress, error_code, created_at, updated_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        document_id: { $ref: '#/components/schemas/Uuid' }
+        status: { $ref: '#/components/schemas/KnowledgeUploadStatus' }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        error_code: { type: [string, 'null'] }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    Requirement:
+      type: object
+      required:
+        [
+          id,
+          department_id,
+          publisher_user_id,
+          title,
+          objective,
+          acceptance_criteria,
+          status,
+          version,
+          created_at,
+          updated_at,
+          published_at,
+        ]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        department_id: { $ref: '#/components/schemas/Uuid' }
+        publisher_user_id: { $ref: '#/components/schemas/Uuid' }
+        title: { type: string, maxLength: 200 }
+        objective: { type: string, maxLength: 20000 }
+        acceptance_criteria: { type: array, items: { type: string } }
+        status: { $ref: '#/components/schemas/RequirementStatus' }
+        version: { type: integer, minimum: 1 }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+        published_at:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+    CreateRequirementRequest:
+      type: object
+      required: [title, objective, acceptance_criteria]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        objective: { type: string, minLength: 1, maxLength: 20000 }
+        acceptance_criteria: { type: array, items: { type: string, minLength: 1 }, maxItems: 50 }
+    UpdateRequirementRequest:
+      allOf:
+        - { $ref: '#/components/schemas/CreateRequirementRequest' }
+        - { $ref: '#/components/schemas/VersionedCommand' }
+    RequirementPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Requirement' } }
+        next_cursor: { type: [string, 'null'] }
+    TaskSummary:
+      type: object
+      required:
+        [
+          id,
+          requirement_id,
+          parent_task_id,
+          assignee_user_id,
+          title,
+          status,
+          due_at,
+          latest_review_result,
+          position,
+          version,
+          updated_at,
+        ]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        requirement_id: { $ref: '#/components/schemas/Uuid' }
+        parent_task_id:
+          oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }]
+        assignee_user_id:
+          oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }]
+        title: { type: string }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        due_at:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+        latest_review_result:
+          oneOf: [{ $ref: '#/components/schemas/ReviewResult' }, { type: 'null' }]
+        position: { type: integer, minimum: 0 }
+        version: { type: integer, minimum: 1 }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    TaskDetail:
+      allOf:
+        - { $ref: '#/components/schemas/TaskSummary' }
+        - type: object
+          required: [description, acceptance_criteria, dependencies, submissions, review_runs]
+          properties:
+            description: { type: string }
+            acceptance_criteria: { type: array, items: { type: string } }
+            dependencies: { type: array, items: { $ref: '#/components/schemas/Uuid' } }
+            submissions: { type: array, items: { $ref: '#/components/schemas/TaskSubmission' } }
+            review_runs: { type: array, items: { $ref: '#/components/schemas/TaskReviewRun' } }
+    RequirementDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Requirement' }
+        - type: object
+          required: [tasks]
+          properties:
+            tasks: { type: array, items: { $ref: '#/components/schemas/TaskSummary' } }
+    SplitTaskDraft:
+      type: object
+      required:
+        [
+          client_id,
+          title,
+          description,
+          acceptance_criteria,
+          assignee_user_id,
+          depends_on_client_ids,
+          position,
+        ]
+      properties:
+        client_id: { type: string }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 20000 }
+        acceptance_criteria: { type: array, items: { type: string } }
+        assignee_user_id:
+          oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }]
+        depends_on_client_ids: { type: array, items: { type: string } }
+        position: { type: integer, minimum: 0 }
+    ApplySplitRequest:
+      type: object
+      required: [operation_id, tasks, expected_version]
+      properties:
+        operation_id: { $ref: '#/components/schemas/Uuid' }
+        tasks:
+          {
+            type: array,
+            items: { $ref: '#/components/schemas/SplitTaskDraft' },
+            minItems: 1,
+            maxItems: 100,
+          }
+        expected_version: { type: integer, minimum: 1 }
+    TaskPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/TaskSummary' } }
+        next_cursor: { type: [string, 'null'] }
+    TaskTransitionRequest:
+      type: object
+      required: [to_status, expected_version]
+      properties:
+        to_status: { $ref: '#/components/schemas/TaskStatus' }
+        reason: { type: [string, 'null'], maxLength: 2000 }
+        expected_version: { type: integer, minimum: 1 }
+    EvidenceItem:
+      type: object
+      required: [kind, label, value]
+      properties:
+        kind: { type: string, enum: [url, text, file_ref] }
+        label: { type: string, maxLength: 200 }
+        value: { type: string, maxLength: 10000 }
+    CreateTaskSubmissionRequest:
+      type: object
+      required: [summary, evidence, expected_version]
+      properties:
+        summary: { type: string, minLength: 1, maxLength: 20000 }
+        evidence:
+          { type: array, items: { $ref: '#/components/schemas/EvidenceItem' }, maxItems: 50 }
+        expected_version: { type: integer, minimum: 1 }
+    TaskSubmission:
+      type: object
+      required: [id, task_id, submitter_user_id, summary, evidence, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        task_id: { $ref: '#/components/schemas/Uuid' }
+        submitter_user_id: { $ref: '#/components/schemas/Uuid' }
+        summary: { type: string }
+        evidence: { type: array, items: { $ref: '#/components/schemas/EvidenceItem' } }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+    StartTaskReviewRequest:
+      type: object
+      required: [submission_id, expected_version]
+      properties:
+        submission_id: { $ref: '#/components/schemas/Uuid' }
+        expected_version: { type: integer, minimum: 1 }
+    ReviewCheck:
+      type: object
+      required: [name, passed, detail]
+      properties:
+        name: { type: string }
+        passed: { type: [boolean, 'null'] }
+        detail: { type: string }
+    TaskReviewRun:
+      type: object
+      required:
+        [
+          id,
+          task_id,
+          submission_id,
+          status,
+          result,
+          summary,
+          checks,
+          evidence,
+          executor_version,
+          created_at,
+          completed_at,
+        ]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        task_id: { $ref: '#/components/schemas/Uuid' }
+        submission_id: { $ref: '#/components/schemas/Uuid' }
+        status: { $ref: '#/components/schemas/AutomationRunStatus' }
+        result:
+          oneOf: [{ $ref: '#/components/schemas/ReviewResult' }, { type: 'null' }]
+        summary: { type: [string, 'null'] }
+        checks: { type: array, items: { $ref: '#/components/schemas/ReviewCheck' } }
+        evidence: { type: array, items: { $ref: '#/components/schemas/EvidenceItem' } }
+        executor_version: { type: string }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        completed_at:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+    AutomationOperation:
+      type: object
+      required: [id, kind, status, result, error, created_at, completed_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        kind: { type: string, enum: [requirement_split, task_review, daily_rewrite] }
+        status: { $ref: '#/components/schemas/AutomationRunStatus' }
+        result:
+          oneOf:
+            - { $ref: '#/components/schemas/RequirementSplitResult' }
+            - { $ref: '#/components/schemas/TaskReviewAutomationResult' }
+            - { $ref: '#/components/schemas/DailyRewriteResult' }
+            - type: 'null'
+        error:
+          oneOf:
+            - type: object
+              required: [code, message]
+              properties: { code: { type: string }, message: { type: string } }
+            - type: 'null'
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        completed_at:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+    RequirementSplitResult:
+      type: object
+      additionalProperties: false
+      required: [tasks]
+      properties:
+        tasks:
+          {
+            type: array,
+            items: { $ref: '#/components/schemas/SplitTaskDraft' },
+            minItems: 1,
+            maxItems: 100,
+          }
+    TaskReviewAutomationResult:
+      type: object
+      additionalProperties: false
+      required: [result, summary, checks, evidence, executor_version]
+      properties:
+        result: { $ref: '#/components/schemas/ReviewResult' }
+        summary: { type: string }
+        checks: { type: array, items: { $ref: '#/components/schemas/ReviewCheck' } }
+        evidence: { type: array, items: { $ref: '#/components/schemas/EvidenceItem' } }
+        executor_version: { type: string }
+    DailyRewriteResult:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content: { $ref: '#/components/schemas/DailyReportContent' }
+    DailyReportContent:
+      type: object
+      required: [completed_today, next_plan, blockers, other, free_text]
+      properties:
+        completed_today: { type: string, maxLength: 20000 }
+        next_plan: { type: string, maxLength: 20000 }
+        blockers: { type: string, maxLength: 20000 }
+        other: { type: string, maxLength: 20000 }
+        free_text: { type: [string, 'null'], maxLength: 20000 }
+    DailyReport:
+      type: object
+      required:
+        [id, user_id, department_id, work_date, content, status, version, published_at, updated_at]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        user_id: { $ref: '#/components/schemas/Uuid' }
+        department_id: { $ref: '#/components/schemas/Uuid' }
+        work_date: { $ref: '#/components/schemas/DateString' }
+        content: { $ref: '#/components/schemas/DailyReportContent' }
+        status: { $ref: '#/components/schemas/DailyReportStatus' }
+        version: { type: integer, minimum: 1 }
+        published_at:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    UpsertDailyReportRequest:
+      type: object
+      required: [content, expected_version]
+      properties:
+        content: { $ref: '#/components/schemas/DailyReportContent' }
+        expected_version: { type: integer, minimum: 0 }
+    DailyReportPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/DailyReport' } }
+        next_cursor: { type: [string, 'null'] }
+    DailyRewriteRequest:
+      type: object
+      required: [mode, expected_version]
+      properties:
+        mode: { type: string, enum: [polish, shorten, structure] }
+        expected_version: { type: integer, minimum: 1 }
+    ApplyDailyRewriteRequest:
+      type: object
+      required: [operation_id, content, expected_version]
+      properties:
+        operation_id: { $ref: '#/components/schemas/Uuid' }
+        content: { $ref: '#/components/schemas/DailyReportContent' }
+        expected_version: { type: integer, minimum: 1 }
+    DepartmentDailyReportItem:
+      type: object
+      required: [user, work_date, report]
+      properties:
+        user: { $ref: '#/components/schemas/UserSummary' }
+        work_date: { $ref: '#/components/schemas/DateString' }
+        report:
+          oneOf: [{ $ref: '#/components/schemas/DailyReport' }, { type: 'null' }]
+    DepartmentDailyReportView:
+      type: object
+      required: [department, from, to, items, next_cursor]
+      properties:
+        department: { $ref: '#/components/schemas/Department' }
+        from: { $ref: '#/components/schemas/DateString' }
+        to: { $ref: '#/components/schemas/DateString' }
+        items: { type: array, items: { $ref: '#/components/schemas/DepartmentDailyReportItem' } }
+        next_cursor: { type: [string, 'null'] }

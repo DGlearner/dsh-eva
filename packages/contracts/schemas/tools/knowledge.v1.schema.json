@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://company.example/schemas/tools/knowledge.v1.schema.json",
+  "title": "Company Knowledge Tool Contract v1",
+  "$comment": "Tool inputs never accept user, tenant, department, endpoint, header, or token fields. Identity comes from the trusted runner context.",
+  "x-company-tools": {
+    "get_current_user": {
+      "input": "#/$defs/GetCurrentUserInput",
+      "output": "#/$defs/GetCurrentUserOutput"
+    },
+    "search_knowledge": {
+      "input": "#/$defs/SearchKnowledgeInput",
+      "output": "#/$defs/SearchKnowledgeOutput"
+    },
+    "list_knowledge_documents": {
+      "input": "#/$defs/ListKnowledgeDocumentsInput",
+      "output": "#/$defs/ListKnowledgeDocumentsOutput"
+    }
+  },
+  "$defs": {
+    "Uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "KnowledgeScope": {
+      "type": "string",
+      "enum": ["company", "personal"]
+    },
+    "KnowledgeCategory": {
+      "type": ["string", "null"],
+      "enum": ["company-information", "xiaopai-design", "patent-document", null]
+    },
+    "KnowledgeDocumentStatus": {
+      "type": "string",
+      "enum": ["pending_review", "ready", "rejected", "archived", "pending_purge", "purging"]
+    },
+    "GetCurrentUserInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 0
+    },
+    "GetCurrentUserOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user_id", "tenant_id", "username", "display_name"],
+      "properties": {
+        "user_id": { "$ref": "#/$defs/Uuid" },
+        "tenant_id": { "$ref": "#/$defs/Uuid" },
+        "username": { "type": "string" },
+        "display_name": { "type": "string" }
+      }
+    },
+    "SearchKnowledgeInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query"],
+      "properties": {
+        "query": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "category": { "$ref": "#/$defs/KnowledgeCategory" },
+        "top_k": { "type": "integer", "minimum": 1, "maximum": 20, "default": 5 }
+      }
+    },
+    "KnowledgeSearchItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_id",
+        "knowledge_id",
+        "version",
+        "title",
+        "file_name",
+        "category",
+        "visibility",
+        "heading_path",
+        "content",
+        "line_start",
+        "line_end",
+        "score",
+        "vector_score",
+        "lexical_score"
+      ],
+      "properties": {
+        "document_id": { "$ref": "#/$defs/Uuid" },
+        "knowledge_id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string" },
+        "file_name": { "type": "string" },
+        "category": { "$ref": "#/$defs/KnowledgeCategory" },
+        "visibility": { "$ref": "#/$defs/KnowledgeScope" },
+        "heading_path": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "content": { "type": "string" },
+        "line_start": { "type": "integer", "minimum": 1 },
+        "line_end": { "type": "integer", "minimum": 1 },
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "vector_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "lexical_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      }
+    },
+    "SearchKnowledgeOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query", "count", "results"],
+      "properties": {
+        "query": { "type": "string" },
+        "count": { "type": "integer", "minimum": 0 },
+        "results": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/KnowledgeSearchItem" },
+          "maxItems": 20
+        }
+      }
+    },
+    "ListKnowledgeDocumentsInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "$ref": "#/$defs/KnowledgeDocumentStatus" },
+        "category": { "$ref": "#/$defs/KnowledgeCategory" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+      }
+    },
+    "KnowledgeDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_id",
+        "knowledge_id",
+        "version",
+        "title",
+        "file_name",
+        "category",
+        "visibility",
+        "status",
+        "updated_at"
+      ],
+      "properties": {
+        "document_id": { "$ref": "#/$defs/Uuid" },
+        "knowledge_id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string" },
+        "file_name": { "type": "string" },
+        "category": { "$ref": "#/$defs/KnowledgeCategory" },
+        "visibility": { "$ref": "#/$defs/KnowledgeScope" },
+        "status": { "$ref": "#/$defs/KnowledgeDocumentStatus" },
+        "updated_at": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "ListKnowledgeDocumentsOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "documents"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "documents": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/KnowledgeDocument" },
+          "maxItems": 100
+        }
+      }
+    }
+  }
+}

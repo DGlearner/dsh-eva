@@ -1,0 +1,7 @@
+node_modules/
+vendor/
+dist/
+coverage/
+pnpm-lock.yaml
+dsh二开融合设计.md
+三Worktree并发开发启动基线.md

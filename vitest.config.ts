@@ -1,0 +1,12 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    passWithNoTests: true,
+    projects: [
+      'apps/*/vitest.config.ts',
+      'services/*/vitest.config.ts',
+      'packages/*/vitest.config.ts',
+    ],
+  },
+});

@@ -1,0 +1,870 @@
+{
+  "fixture_version": "fixture-v1",
+  "clock": {
+    "now": "2026-08-18T10:00:00Z",
+    "company_timezone": "Asia/Shanghai",
+    "work_date": "2026-08-18"
+  },
+  "tenant": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "name": "小派公司",
+    "status": "active"
+  },
+  "departments": [
+    {
+      "id": "00000000-0000-4000-8000-000000000101",
+      "name": "研发部",
+      "status": "active",
+      "version": 1
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000102",
+      "name": "产品部",
+      "status": "active",
+      "version": 1
+    }
+  ],
+  "users": [
+    {
+      "id": "00000000-0000-4000-8000-000000001001",
+      "username": "admin",
+      "display_name": "平台管理员",
+      "platform_role": "admin",
+      "status": "active"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000001002",
+      "username": "dev_manager",
+      "display_name": "研发主管",
+      "platform_role": "member",
+      "status": "active"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000001003",
+      "username": "dev_a",
+      "display_name": "研发成员甲",
+      "platform_role": "member",
+      "status": "active"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000001004",
+      "username": "dev_b",
+      "display_name": "研发成员乙",
+      "platform_role": "member",
+      "status": "active"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000001005",
+      "username": "product_manager",
+      "display_name": "产品主管",
+      "platform_role": "member",
+      "status": "active"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000001006",
+      "username": "product_a",
+      "display_name": "产品成员甲",
+      "platform_role": "member",
+      "status": "active"
+    }
+  ],
+  "department_members": [
+    {
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "user_id": "00000000-0000-4000-8000-000000001002",
+      "org_role": "manager",
+      "version": 1
+    },
+    {
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "user_id": "00000000-0000-4000-8000-000000001003",
+      "org_role": "member",
+      "version": 1
+    },
+    {
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "user_id": "00000000-0000-4000-8000-000000001004",
+      "org_role": "member",
+      "version": 1
+    },
+    {
+      "department_id": "00000000-0000-4000-8000-000000000102",
+      "user_id": "00000000-0000-4000-8000-000000001005",
+      "org_role": "manager",
+      "version": 1
+    },
+    {
+      "department_id": "00000000-0000-4000-8000-000000000102",
+      "user_id": "00000000-0000-4000-8000-000000001006",
+      "org_role": "member",
+      "version": 1
+    }
+  ],
+  "knowledge": {
+    "categories": [
+      { "code": "company-information", "name": "公司信息", "scope": "company" },
+      { "code": "xiaopai-design", "name": "小派设计", "scope": "company" },
+      { "code": "patent-document", "name": "专利文档", "scope": "company" }
+    ],
+    "documents": [
+      {
+        "id": "00000000-0000-4000-8000-000000002001",
+        "fixture_key": "company-expense-policy",
+        "knowledge_id": "company-information/expense-policy-v1",
+        "scope": "company",
+        "owner_user_id": null,
+        "category": "company-information",
+        "title": "员工报销制度",
+        "file_name": "员工报销制度.md",
+        "media_type": "text/markdown",
+        "size_bytes": 2048,
+        "status": "ready",
+        "version": 1,
+        "updated_at": "2026-08-16T08:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002002",
+        "fixture_key": "company-leave-policy",
+        "knowledge_id": "company-information/leave-policy-v1",
+        "scope": "company",
+        "owner_user_id": null,
+        "category": "company-information",
+        "title": "员工休假制度",
+        "file_name": "员工休假制度.md",
+        "media_type": "text/markdown",
+        "size_bytes": 2300,
+        "status": "ready",
+        "version": 1,
+        "updated_at": "2026-08-16T08:10:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002003",
+        "fixture_key": "design-color-spec",
+        "knowledge_id": "xiaopai-design/color-spec-v2",
+        "scope": "company",
+        "owner_user_id": null,
+        "category": "xiaopai-design",
+        "title": "品牌颜色规范",
+        "file_name": "品牌颜色规范.md",
+        "media_type": "text/markdown",
+        "size_bytes": 1800,
+        "status": "ready",
+        "version": 2,
+        "updated_at": "2026-08-16T08:20:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002004",
+        "fixture_key": "design-component-spec",
+        "knowledge_id": "xiaopai-design/component-spec-v1",
+        "scope": "company",
+        "owner_user_id": null,
+        "category": "xiaopai-design",
+        "title": "后台组件规范",
+        "file_name": "后台组件规范.md",
+        "media_type": "text/markdown",
+        "size_bytes": 3200,
+        "status": "ready",
+        "version": 1,
+        "updated_at": "2026-08-16T08:30:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002005",
+        "fixture_key": "patent-search-method",
+        "knowledge_id": "patent-document/search-method-v3",
+        "scope": "company",
+        "owner_user_id": null,
+        "category": "patent-document",
+        "title": "混合检索方法专利",
+        "file_name": "混合检索方法专利.pdf",
+        "media_type": "application/pdf",
+        "size_bytes": 500000,
+        "status": "ready",
+        "version": 3,
+        "updated_at": "2026-08-16T08:40:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002006",
+        "fixture_key": "patent-routing-method",
+        "knowledge_id": "patent-document/routing-method-v1",
+        "scope": "company",
+        "owner_user_id": null,
+        "category": "patent-document",
+        "title": "模型路由方法专利",
+        "file_name": "模型路由方法专利.pdf",
+        "media_type": "application/pdf",
+        "size_bytes": 420000,
+        "status": "ready",
+        "version": 1,
+        "updated_at": "2026-08-16T08:50:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002007",
+        "fixture_key": "company-security-draft",
+        "knowledge_id": "company-information/security-draft-v1",
+        "scope": "company",
+        "owner_user_id": null,
+        "category": "company-information",
+        "title": "安全规范草案",
+        "file_name": "安全规范草案.md",
+        "media_type": "text/markdown",
+        "size_bytes": 900,
+        "status": "pending_review",
+        "version": 1,
+        "updated_at": "2026-08-17T09:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002101",
+        "fixture_key": "dev-a-mars-login",
+        "knowledge_id": "personal/dev-a/mars-login-v1",
+        "scope": "personal",
+        "owner_user_id": "00000000-0000-4000-8000-000000001003",
+        "category": null,
+        "title": "火星登录故障复盘",
+        "file_name": "火星登录故障复盘.md",
+        "media_type": "text/markdown",
+        "size_bytes": 1200,
+        "status": "ready",
+        "version": 1,
+        "updated_at": "2026-08-17T09:10:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002102",
+        "fixture_key": "dev-a-cache-notes",
+        "knowledge_id": "personal/dev-a/cache-notes-v1",
+        "scope": "personal",
+        "owner_user_id": "00000000-0000-4000-8000-000000001003",
+        "category": null,
+        "title": "缓存调优笔记",
+        "file_name": "缓存调优笔记.md",
+        "media_type": "text/markdown",
+        "size_bytes": 800,
+        "status": "ready",
+        "version": 1,
+        "updated_at": "2026-08-17T09:20:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002103",
+        "fixture_key": "dev-a-archived-draft",
+        "knowledge_id": "personal/dev-a/archived-draft-v1",
+        "scope": "personal",
+        "owner_user_id": "00000000-0000-4000-8000-000000001003",
+        "category": null,
+        "title": "已归档草稿",
+        "file_name": "已归档草稿.md",
+        "media_type": "text/markdown",
+        "size_bytes": 500,
+        "status": "archived",
+        "version": 2,
+        "updated_at": "2026-08-17T09:30:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002201",
+        "fixture_key": "dev-b-ocean-migration",
+        "knowledge_id": "personal/dev-b/ocean-migration-v1",
+        "scope": "personal",
+        "owner_user_id": "00000000-0000-4000-8000-000000001004",
+        "category": null,
+        "title": "海洋数据迁移记录",
+        "file_name": "海洋数据迁移记录.md",
+        "media_type": "text/markdown",
+        "size_bytes": 1100,
+        "status": "ready",
+        "version": 1,
+        "updated_at": "2026-08-17T09:40:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002202",
+        "fixture_key": "dev-b-index-notes",
+        "knowledge_id": "personal/dev-b/index-notes-v1",
+        "scope": "personal",
+        "owner_user_id": "00000000-0000-4000-8000-000000001004",
+        "category": null,
+        "title": "索引维护笔记",
+        "file_name": "索引维护笔记.md",
+        "media_type": "text/markdown",
+        "size_bytes": 760,
+        "status": "ready",
+        "version": 1,
+        "updated_at": "2026-08-17T09:50:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000002203",
+        "fixture_key": "dev-b-failed-upload",
+        "knowledge_id": "personal/dev-b/failed-upload-v1",
+        "scope": "personal",
+        "owner_user_id": "00000000-0000-4000-8000-000000001004",
+        "category": null,
+        "title": "模拟上传失败文件",
+        "file_name": "模拟上传失败文件.pdf",
+        "media_type": "application/pdf",
+        "size_bytes": 64000,
+        "status": "pending_review",
+        "version": 1,
+        "updated_at": "2026-08-17T10:00:00Z"
+      }
+    ],
+    "chunks": [
+      {
+        "document_id": "00000000-0000-4000-8000-000000002001",
+        "heading_path": ["差旅报销", "住宿"],
+        "content": "普通员工出差住宿报销上限为每晚 500 元，超出部分需主管说明。",
+        "line_start": 20,
+        "line_end": 23,
+        "score": 0.96,
+        "vector_score": 0.93,
+        "lexical_score": 0.99
+      },
+      {
+        "document_id": "00000000-0000-4000-8000-000000002002",
+        "heading_path": ["年假", "申请"],
+        "content": "年假需至少提前两个工作日在系统中提交。",
+        "line_start": 8,
+        "line_end": 10,
+        "score": 0.82,
+        "vector_score": 0.8,
+        "lexical_score": 0.84
+      },
+      {
+        "document_id": "00000000-0000-4000-8000-000000002003",
+        "heading_path": ["主色"],
+        "content": "界面主色以公司正式 Logo 资产提取结果为准，未提供前只使用可替换 token。",
+        "line_start": 4,
+        "line_end": 7,
+        "score": 0.88,
+        "vector_score": 0.86,
+        "lexical_score": 0.9
+      },
+      {
+        "document_id": "00000000-0000-4000-8000-000000002005",
+        "heading_path": ["权利要求", "混合检索"],
+        "content": "该方法组合向量召回与关键词召回，并使用稳定排序合并结果。",
+        "line_start": 101,
+        "line_end": 108,
+        "score": 0.94,
+        "vector_score": 0.92,
+        "lexical_score": 0.96
+      },
+      {
+        "document_id": "00000000-0000-4000-8000-000000002101",
+        "heading_path": ["根因"],
+        "content": "火星登录失败由过期签名缓存导致，修复方式是按租户维度失效缓存。",
+        "line_start": 12,
+        "line_end": 16,
+        "score": 0.98,
+        "vector_score": 0.97,
+        "lexical_score": 0.99
+      },
+      {
+        "document_id": "00000000-0000-4000-8000-000000002102",
+        "heading_path": ["缓存键"],
+        "content": "缓存键必须包含租户和用户维度，避免跨用户命中。",
+        "line_start": 5,
+        "line_end": 8,
+        "score": 0.84,
+        "vector_score": 0.82,
+        "lexical_score": 0.86
+      },
+      {
+        "document_id": "00000000-0000-4000-8000-000000002201",
+        "heading_path": ["迁移窗口"],
+        "content": "海洋数据迁移窗口固定为周六凌晨，并保留只读回退点。",
+        "line_start": 30,
+        "line_end": 33,
+        "score": 0.97,
+        "vector_score": 0.96,
+        "lexical_score": 0.98
+      },
+      {
+        "document_id": "00000000-0000-4000-8000-000000002202",
+        "heading_path": ["重建索引"],
+        "content": "索引重建期间继续读取旧版本，完成后原子切换。",
+        "line_start": 14,
+        "line_end": 18,
+        "score": 0.83,
+        "vector_score": 0.81,
+        "lexical_score": 0.85
+      }
+    ],
+    "uploads": [
+      {
+        "id": "00000000-0000-4000-8000-000000002901",
+        "document_id": "00000000-0000-4000-8000-000000002203",
+        "owner_user_id": "00000000-0000-4000-8000-000000001004",
+        "status": "failed",
+        "progress": 35,
+        "error_code": "fixture_parse_failed",
+        "created_at": "2026-08-17T09:59:00Z",
+        "updated_at": "2026-08-17T10:00:00Z"
+      }
+    ],
+    "query_cases": [
+      {
+        "case": "company-hit",
+        "actor_user_id": "00000000-0000-4000-8000-000000001003",
+        "query": "员工出差住宿报销上限",
+        "category": "company-information",
+        "expected_document_ids": ["00000000-0000-4000-8000-000000002001"]
+      },
+      {
+        "case": "dev-a-personal-hit",
+        "actor_user_id": "00000000-0000-4000-8000-000000001003",
+        "query": "火星登录修复",
+        "category": null,
+        "expected_document_ids": ["00000000-0000-4000-8000-000000002101"]
+      },
+      {
+        "case": "dev-b-cannot-read-dev-a",
+        "actor_user_id": "00000000-0000-4000-8000-000000001004",
+        "query": "火星登录修复",
+        "category": null,
+        "expected_document_ids": []
+      },
+      {
+        "case": "patent-category-filter",
+        "actor_user_id": "00000000-0000-4000-8000-000000001004",
+        "query": "向量和关键词混合检索",
+        "category": "patent-document",
+        "expected_document_ids": ["00000000-0000-4000-8000-000000002005"]
+      },
+      {
+        "case": "no-result",
+        "actor_user_id": "00000000-0000-4000-8000-000000001003",
+        "query": "完全不存在的量子食谱",
+        "category": null,
+        "expected_document_ids": []
+      },
+      {
+        "case": "stable-tie-order",
+        "actor_user_id": "00000000-0000-4000-8000-000000001003",
+        "query": "公司制度",
+        "category": "company-information",
+        "score_override": 0.7,
+        "expected_document_ids": [
+          "00000000-0000-4000-8000-000000002001",
+          "00000000-0000-4000-8000-000000002002"
+        ]
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "00000000-0000-4000-8000-000000003001",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "publisher_user_id": "00000000-0000-4000-8000-000000001002",
+      "title": "知识检索链路验证",
+      "objective": "用 fake 数据验证公司与个人知识隔离。",
+      "acceptance_criteria": ["公司知识可检索", "个人知识不可串用", "引用可恢复"],
+      "status": "draft",
+      "version": 2,
+      "created_at": "2026-08-15T01:00:00Z",
+      "updated_at": "2026-08-17T01:00:00Z",
+      "published_at": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000003002",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "publisher_user_id": "00000000-0000-4000-8000-000000001002",
+      "title": "公司协作平台 MVP",
+      "objective": "完成任务和日报的主体业务链路。",
+      "acceptance_criteria": ["看板状态完整", "自动审核需主管确认", "日报可筛选"],
+      "status": "published",
+      "version": 4,
+      "created_at": "2026-08-10T01:00:00Z",
+      "updated_at": "2026-08-16T01:00:00Z",
+      "published_at": "2026-08-11T01:00:00Z"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "00000000-0000-4000-8000-000000004001",
+      "requirement_id": "00000000-0000-4000-8000-000000003002",
+      "parent_task_id": null,
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "assignee_user_id": "00000000-0000-4000-8000-000000001003",
+      "title": "实现登录接口",
+      "description": "完成最小本地账号登录。",
+      "acceptance_criteria": ["正确凭据可登录", "错误凭据返回统一错误"],
+      "status": "done",
+      "position": 1,
+      "due_at": "2026-08-18T10:00:00Z",
+      "latest_review_result": "pass",
+      "version": 5,
+      "updated_at": "2026-08-16T06:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004002",
+      "requirement_id": "00000000-0000-4000-8000-000000003002",
+      "parent_task_id": null,
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "assignee_user_id": "00000000-0000-4000-8000-000000001003",
+      "title": "实现任务列表",
+      "description": "实现四个固定快速视图。",
+      "acceptance_criteria": ["筛选结果稳定", "支持空状态"],
+      "status": "in_progress",
+      "position": 2,
+      "due_at": "2026-08-20T10:00:00Z",
+      "latest_review_result": null,
+      "version": 3,
+      "updated_at": "2026-08-18T03:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004003",
+      "requirement_id": "00000000-0000-4000-8000-000000003002",
+      "parent_task_id": null,
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "assignee_user_id": "00000000-0000-4000-8000-000000001004",
+      "title": "实现日报编辑",
+      "description": "完成保存、发布和软删除。",
+      "acceptance_criteria": ["每天一份", "保留修订记录"],
+      "status": "review",
+      "position": 3,
+      "due_at": "2026-08-19T10:00:00Z",
+      "latest_review_result": "needs_review",
+      "version": 4,
+      "updated_at": "2026-08-18T04:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004004",
+      "requirement_id": "00000000-0000-4000-8000-000000003002",
+      "parent_task_id": null,
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "assignee_user_id": "00000000-0000-4000-8000-000000001004",
+      "title": "补充空状态页面",
+      "description": "为业务列表补充空状态。",
+      "acceptance_criteria": ["无数据时页面稳定"],
+      "status": "todo",
+      "position": 4,
+      "due_at": null,
+      "latest_review_result": null,
+      "version": 1,
+      "updated_at": "2026-08-18T04:10:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004005",
+      "requirement_id": "00000000-0000-4000-8000-000000003002",
+      "parent_task_id": null,
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "assignee_user_id": "00000000-0000-4000-8000-000000001003",
+      "title": "修复分页边界",
+      "description": "修复重复 cursor。",
+      "acceptance_criteria": ["无重复记录"],
+      "status": "failed",
+      "position": 5,
+      "due_at": null,
+      "latest_review_result": "fail",
+      "version": 4,
+      "updated_at": "2026-08-18T04:20:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004006",
+      "requirement_id": "00000000-0000-4000-8000-000000003002",
+      "parent_task_id": null,
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "assignee_user_id": null,
+      "title": "废弃的实验任务",
+      "description": "保留取消状态测试。",
+      "acceptance_criteria": [],
+      "status": "cancelled",
+      "position": 6,
+      "due_at": null,
+      "latest_review_result": null,
+      "version": 2,
+      "updated_at": "2026-08-18T04:30:00Z"
+    }
+  ],
+  "task_dependencies": [
+    {
+      "task_id": "00000000-0000-4000-8000-000000004002",
+      "depends_on_task_id": "00000000-0000-4000-8000-000000004001"
+    }
+  ],
+  "task_submissions": [
+    {
+      "id": "00000000-0000-4000-8000-000000004901",
+      "task_id": "00000000-0000-4000-8000-000000004001",
+      "submitter_user_id": "00000000-0000-4000-8000-000000001003",
+      "summary": "登录接口和测试已完成。",
+      "evidence": [
+        { "kind": "url", "label": "测试记录", "value": "https://example.invalid/runs/login" }
+      ],
+      "created_at": "2026-08-16T05:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004902",
+      "task_id": "00000000-0000-4000-8000-000000004003",
+      "submitter_user_id": "00000000-0000-4000-8000-000000001004",
+      "summary": "日报编辑已提交，等待确认。",
+      "evidence": [{ "kind": "text", "label": "说明", "value": "覆盖保存和发布。" }],
+      "created_at": "2026-08-18T03:30:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004903",
+      "task_id": "00000000-0000-4000-8000-000000004005",
+      "submitter_user_id": "00000000-0000-4000-8000-000000001003",
+      "summary": "分页修复第一次提交。",
+      "evidence": [{ "kind": "text", "label": "已知问题", "value": "并发翻页仍可能重复。" }],
+      "created_at": "2026-08-18T03:40:00Z"
+    }
+  ],
+  "task_review_runs": [
+    {
+      "id": "00000000-0000-4000-8000-000000005001",
+      "task_id": "00000000-0000-4000-8000-000000004001",
+      "submission_id": "00000000-0000-4000-8000-000000004901",
+      "automation_run_id": "00000000-0000-4000-8000-000000006002",
+      "status": "succeeded",
+      "result": "pass",
+      "summary": "所有验收项通过，仍需主管确认。",
+      "checks": [{ "name": "登录测试", "passed": true, "detail": "2 个场景通过" }],
+      "evidence": [
+        { "kind": "url", "label": "测试记录", "value": "https://example.invalid/runs/login" }
+      ],
+      "executor_version": "fake-automation-v1",
+      "created_at": "2026-08-16T05:10:00Z",
+      "completed_at": "2026-08-16T05:10:01Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000005002",
+      "task_id": "00000000-0000-4000-8000-000000004003",
+      "submission_id": "00000000-0000-4000-8000-000000004902",
+      "automation_run_id": "00000000-0000-4000-8000-000000006003",
+      "status": "succeeded",
+      "result": "needs_review",
+      "summary": "删除后的重开场景需要人工确认。",
+      "checks": [{ "name": "软删除重开", "passed": null, "detail": "未提供完整证据" }],
+      "evidence": [],
+      "executor_version": "fake-automation-v1",
+      "created_at": "2026-08-18T03:35:00Z",
+      "completed_at": "2026-08-18T03:35:01Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000005003",
+      "task_id": "00000000-0000-4000-8000-000000004005",
+      "submission_id": "00000000-0000-4000-8000-000000004903",
+      "automation_run_id": "00000000-0000-4000-8000-000000006004",
+      "status": "succeeded",
+      "result": "fail",
+      "summary": "并发分页验收失败。",
+      "checks": [{ "name": "并发翻页", "passed": false, "detail": "发现重复记录" }],
+      "evidence": [],
+      "executor_version": "fake-automation-v1",
+      "created_at": "2026-08-18T03:45:00Z",
+      "completed_at": "2026-08-18T03:45:01Z"
+    }
+  ],
+  "automation_operations": [
+    {
+      "id": "00000000-0000-4000-8000-000000006001",
+      "kind": "requirement_split",
+      "actor_user_id": "00000000-0000-4000-8000-000000001002",
+      "resource_type": "requirement",
+      "resource_id": "00000000-0000-4000-8000-000000003001",
+      "provider": "fake",
+      "status": "succeeded",
+      "result": {
+        "tasks": [
+          {
+            "client_id": "split-1",
+            "title": "实现知识查询 fake",
+            "description": "按固定用户返回可见数据。",
+            "acceptance_criteria": ["不能输入 user_id"],
+            "assignee_user_id": "00000000-0000-4000-8000-000000001003",
+            "depends_on_client_ids": [],
+            "position": 1
+          }
+        ]
+      },
+      "error": null,
+      "created_at": "2026-08-17T01:00:00Z",
+      "completed_at": "2026-08-17T01:00:01Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000006002",
+      "kind": "task_review",
+      "actor_user_id": "00000000-0000-4000-8000-000000001002",
+      "resource_type": "task",
+      "resource_id": "00000000-0000-4000-8000-000000004001",
+      "provider": "fake",
+      "status": "succeeded",
+      "result": {
+        "result": "pass",
+        "summary": "所有验收项通过，仍需主管确认。",
+        "checks": [{ "name": "登录测试", "passed": true, "detail": "2 个场景通过" }],
+        "evidence": [
+          { "kind": "url", "label": "测试记录", "value": "https://example.invalid/runs/login" }
+        ],
+        "executor_version": "fake-automation-v1"
+      },
+      "error": null,
+      "created_at": "2026-08-16T05:10:00Z",
+      "completed_at": "2026-08-16T05:10:01Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000006003",
+      "kind": "task_review",
+      "actor_user_id": "00000000-0000-4000-8000-000000001002",
+      "resource_type": "task",
+      "resource_id": "00000000-0000-4000-8000-000000004003",
+      "provider": "fake",
+      "status": "succeeded",
+      "result": {
+        "result": "needs_review",
+        "summary": "删除后的重开场景需要人工确认。",
+        "checks": [{ "name": "软删除重开", "passed": null, "detail": "未提供完整证据" }],
+        "evidence": [],
+        "executor_version": "fake-automation-v1"
+      },
+      "error": null,
+      "created_at": "2026-08-18T03:35:00Z",
+      "completed_at": "2026-08-18T03:35:01Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000006004",
+      "kind": "task_review",
+      "actor_user_id": "00000000-0000-4000-8000-000000001002",
+      "resource_type": "task",
+      "resource_id": "00000000-0000-4000-8000-000000004005",
+      "provider": "fake",
+      "status": "succeeded",
+      "result": {
+        "result": "fail",
+        "summary": "并发分页验收失败。",
+        "checks": [{ "name": "并发翻页", "passed": false, "detail": "发现重复记录" }],
+        "evidence": [],
+        "executor_version": "fake-automation-v1"
+      },
+      "error": null,
+      "created_at": "2026-08-18T03:45:00Z",
+      "completed_at": "2026-08-18T03:45:01Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000006005",
+      "kind": "daily_rewrite",
+      "actor_user_id": "00000000-0000-4000-8000-000000001003",
+      "resource_type": "daily_report",
+      "resource_id": "00000000-0000-4000-8000-000000007001",
+      "provider": "fake",
+      "status": "succeeded",
+      "result": {
+        "content": {
+          "completed_today": "完成登录接口及回归测试。",
+          "next_plan": "继续开发任务列表。",
+          "blockers": "无。",
+          "other": "无。",
+          "free_text": null
+        }
+      },
+      "error": null,
+      "created_at": "2026-08-18T08:00:00Z",
+      "completed_at": "2026-08-18T08:00:01Z"
+    }
+  ],
+  "daily_reports": [
+    {
+      "id": "00000000-0000-4000-8000-000000007001",
+      "user_id": "00000000-0000-4000-8000-000000001003",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-18",
+      "content": {
+        "completed_today": "完成登录接口。",
+        "next_plan": "开发任务列表。",
+        "blockers": "无。",
+        "other": "无。",
+        "free_text": null
+      },
+      "status": "published",
+      "version": 3,
+      "published_at": "2026-08-18T09:00:00Z",
+      "updated_at": "2026-08-18T09:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007002",
+      "user_id": "00000000-0000-4000-8000-000000001003",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-17",
+      "content": {
+        "completed_today": "整理接口设计。",
+        "next_plan": "实现登录。",
+        "blockers": "等待测试数据。",
+        "other": "无。",
+        "free_text": null
+      },
+      "status": "draft",
+      "version": 1,
+      "published_at": null,
+      "updated_at": "2026-08-17T09:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007003",
+      "user_id": "00000000-0000-4000-8000-000000001002",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-18",
+      "content": {
+        "completed_today": "评审三条开发链路。",
+        "next_plan": "验收任务看板。",
+        "blockers": "无。",
+        "other": "无。",
+        "free_text": null
+      },
+      "status": "published",
+      "version": 2,
+      "published_at": "2026-08-18T08:30:00Z",
+      "updated_at": "2026-08-18T08:30:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007004",
+      "user_id": "00000000-0000-4000-8000-000000001006",
+      "department_id": "00000000-0000-4000-8000-000000000102",
+      "work_date": "2026-08-18",
+      "content": {
+        "completed_today": "整理需求文案。",
+        "next_plan": "补充验收项。",
+        "blockers": "无。",
+        "other": "无。",
+        "free_text": null
+      },
+      "status": "published",
+      "version": 1,
+      "published_at": "2026-08-18T08:40:00Z",
+      "updated_at": "2026-08-18T08:40:00Z"
+    }
+  ],
+  "daily_report_revisions": [
+    {
+      "id": "00000000-0000-4000-8000-000000007901",
+      "report_id": "00000000-0000-4000-8000-000000007001",
+      "editor_user_id": "00000000-0000-4000-8000-000000001003",
+      "source": "manual",
+      "before_content": null,
+      "after_content": {
+        "completed_today": "完成登录接口。",
+        "next_plan": "开发任务列表。",
+        "blockers": "无。",
+        "other": "无。",
+        "free_text": null
+      },
+      "created_at": "2026-08-18T07:30:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007902",
+      "report_id": "00000000-0000-4000-8000-000000007001",
+      "editor_user_id": "00000000-0000-4000-8000-000000001003",
+      "source": "ai_rewrite",
+      "before_content": {
+        "completed_today": "完成登录接口。",
+        "next_plan": "开发任务列表。",
+        "blockers": "无。",
+        "other": "无。",
+        "free_text": null
+      },
+      "after_content": {
+        "completed_today": "完成登录接口及回归测试。",
+        "next_plan": "继续开发任务列表。",
+        "blockers": "无。",
+        "other": "无。",
+        "free_text": null
+      },
+      "created_at": "2026-08-18T08:10:00Z"
+    }
+  ]
+}
