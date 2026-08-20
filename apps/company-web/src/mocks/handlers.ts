@@ -735,6 +735,11 @@ export const handlers = [
       if (!operation || operation.kind !== 'daily_rewrite' || operation.status !== 'succeeded') {
         return problem(409, 'operation_not_ready', '日报改写操作尚未成功完成。');
       }
+      if (scenario(request) === 'apply-conflict') {
+        item.version += 1;
+        item.updated_at = fixture.clock.now;
+        return problem(412, 'version_conflict', '日报版本已更新，请刷新后重试。');
+      }
       item.content = body.content;
       item.status = 'draft';
       item.version += 1;

@@ -146,6 +146,9 @@ export function DailyReportsPage() {
       setNotice('改写已应用为草稿。');
       invalidate();
     },
+    onError: (error) => {
+      if (error instanceof ApiProblem && error.status === 412) void report.refetch();
+    },
   });
   const remove = useMutation({
     mutationFn: () => api.deleteDailyReport(date, report.data!.version),

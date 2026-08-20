@@ -144,6 +144,24 @@ test('daily rewrite preview expires when the report revision changes', async ({ 
   await expectNoPageOverflow(page);
 });
 
+test('daily rewrite 412 refreshes the report and clears the stale preview', async ({ page }) => {
+  await page.goto('/workbench/daily-reports?as=dev_a&mock=apply-conflict');
+  await page.getByLabel('工作日').fill('2026-08-18');
+  await expect(page.getByLabel('今日完成')).toHaveValue('完成登录接口。');
+  await page.getByRole('button', { name: 'AI 润色' }).click();
+  await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toBeVisible();
+
+  await page.getByRole('button', { name: '应用改写' }).click();
+  await expect(page.getByText('内容已被其他操作更新，请刷新后重试。')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '应用改写' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '保存草稿' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'AI 润色' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '提交日报' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '删除' })).toBeEnabled();
+  await expectNoPageOverflow(page);
+});
+
 test('automation failed and cancelled states stop with server messages', async ({ page }) => {
   await page.goto(
     '/workbench/requirements/00000000-0000-4000-8000-000000003001?as=dev_manager&mock=failed',
