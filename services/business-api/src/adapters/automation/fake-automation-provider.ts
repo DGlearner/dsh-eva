@@ -9,6 +9,7 @@ import type {
 import type {
   AutomationPort,
   AutomationProviderRun,
+  GetAutomationInput,
   StartAutomationInput,
 } from '../../ports/automation.js';
 import type { Clock } from '../../ports/clock.js';
@@ -16,6 +17,10 @@ import type { Clock } from '../../ports/clock.js';
 interface FakeRun extends AutomationProviderRun {
   polls: number;
   finalOutput: AutomationProviderRun['output'];
+  tenantId: string;
+  actorUserId: string;
+  kind: StartAutomationInput['kind'];
+  correlationId: string;
 }
 
 export class FakeAutomationProvider implements AutomationPort {
@@ -29,7 +34,7 @@ export class FakeAutomationProvider implements AutomationPort {
   async start(input: StartAutomationInput): Promise<AutomationProviderRun> {
     const failure = this.startFailures.shift();
     if (failure !== undefined) throw failure;
-    const identity = `${input.tenantId}:${input.actorUserId}:${input.kind}:${input.idempotencyKey}`;
+    const identity = `${input.tenantId}:${input.actorUserId}:${input.kind}:${input.correlationId}:${input.idempotencyKey}`;
     const existingId = this.idempotency.get(identity);
     if (existingId !== undefined) return this.publicRun(this.runs.get(existingId)!);
 
@@ -43,6 +48,10 @@ export class FakeAutomationProvider implements AutomationPort {
       completedAt: null,
       polls: 0,
       finalOutput: this.createOutput(input),
+      tenantId: input.tenantId,
+      actorUserId: input.actorUserId,
+      kind: input.kind,
+      correlationId: input.correlationId,
     };
     this.runs.set(run.id, run);
     this.idempotency.set(identity, run.id);
@@ -57,15 +66,33 @@ export class FakeAutomationProvider implements AutomationPort {
     return this.runs.size;
   }
 
-  async get(runId: string): Promise<AutomationProviderRun> {
-    const run = this.runs.get(runId);
+  async get(input: GetAutomationInput): Promise<AutomationProviderRun> {
+    const run = this.runs.get(input.runId);
     if (run === undefined) {
       return {
-        id: runId,
+        id: input.runId,
         status: 'failed',
         output: null,
         error: { code: 'provider_run_not_found', message: 'Automation run was not found.' },
         createdAt: this.clock.now().toISOString(),
+        completedAt: this.clock.now().toISOString(),
+      };
+    }
+    if (
+      run.tenantId !== input.tenantId ||
+      run.actorUserId !== input.actorUserId ||
+      run.kind !== input.kind ||
+      run.correlationId !== input.correlationId
+    ) {
+      return {
+        id: input.runId,
+        status: 'failed',
+        output: null,
+        error: {
+          code: 'provider_context_mismatch',
+          message: 'Automation run context does not match the requested operation.',
+        },
+        createdAt: run.createdAt,
         completedAt: this.clock.now().toISOString(),
       };
     }

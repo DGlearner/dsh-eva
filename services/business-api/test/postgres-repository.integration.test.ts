@@ -4,7 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { FakeAutomationProvider } from '../src/adapters/automation/fake-automation-provider.js';
 import { PostgresBusinessRepository } from '../src/adapters/postgres/postgres-business-repository.js';
+import { buildBusinessApp } from '../src/app.js';
 import { executeIdempotent } from '../src/application/shared.js';
 import type {
   AuditEvent,
@@ -15,7 +17,16 @@ import type {
   TaskSubmission,
 } from '../src/domain/models.js';
 import { FixedClock } from '../src/ports/clock.js';
-import { actors, DEV_A, DEV_DEPARTMENT, DEV_MANAGER, TENANT } from './helpers.js';
+import {
+  actors,
+  authHeaders,
+  DEV_A,
+  DEV_DEPARTMENT,
+  DEV_MANAGER,
+  ISSUER,
+  SECRET,
+  TENANT,
+} from './helpers.js';
 
 const databaseUrl = process.env.BUSINESS_TEST_DATABASE_URL;
 const describePostgres = databaseUrl === undefined ? describe.skip : describe;
@@ -197,6 +208,87 @@ describePostgres('PostgreSQL business repository', () => {
     await repository.createDailyReport(report);
     await expect(repository.createDailyReport({ ...report, id: randomUUID() })).rejects.toThrow();
     expect(await repository.getDailyReport(TENANT, DEV_A, report.work_date)).toEqual(report);
+  });
+
+  it('atomically rejects an old rewrite after the report is soft-deleted', async () => {
+    const clock = new FixedClock(new Date('2026-08-18T10:00:00.000Z'));
+    const app = buildBusinessApp({
+      repository,
+      automation: new FakeAutomationProvider(clock),
+      clock,
+      actorTokenSecret: SECRET,
+      actorTokenIssuer: ISSUER,
+    });
+    const workDate = '2026-08-20';
+    const content = {
+      completed_today: 'PostgreSQL rewrite test.',
+      next_plan: 'Keep the deletion final.',
+      blockers: 'None.',
+      other: 'None.',
+      free_text: null,
+    };
+    try {
+      const report = await app.inject({
+        method: 'PUT',
+        url: `/company-api/v1/daily-reports/${workDate}`,
+        headers: await authHeaders(actors.devA),
+        payload: { content, expected_version: 0 },
+      });
+      const rewrite = await app.inject({
+        method: 'POST',
+        url: `/company-api/v1/daily-reports/${workDate}/rewrite-runs`,
+        headers: await authHeaders(actors.devA, { 'idempotency-key': 'postgres-rewrite-start' }),
+        payload: { mode: 'polish', expected_version: 1 },
+      });
+      let rewritten = content;
+      for (let index = 0; index < 2; index += 1) {
+        const polled = await app.inject({
+          method: 'GET',
+          url: `/company-api/v1/automation-operations/${rewrite.json().id}`,
+          headers: await authHeaders(actors.devA),
+        });
+        rewritten = polled.json().result?.content ?? rewritten;
+      }
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/company-api/v1/daily-reports/${workDate}?expected_version=1`,
+            headers: await authHeaders(actors.devA),
+          })
+        ).statusCode,
+      ).toBe(204);
+      const revisionsBefore = await repository.listDailyReportRevisions(report.json().id);
+
+      const failed = await app.inject({
+        method: 'POST',
+        url: `/company-api/v1/daily-reports/${workDate}/apply-rewrite`,
+        headers: await authHeaders(actors.devA, { 'idempotency-key': 'postgres-rewrite-apply' }),
+        payload: {
+          operation_id: rewrite.json().id,
+          content: rewritten,
+          expected_version: 2,
+        },
+      });
+
+      expect(failed.statusCode).toBe(409);
+      expect(failed.json()).toMatchObject({ code: 'daily_report_deleted' });
+      expect(await repository.listDailyReportRevisions(report.json().id)).toEqual(revisionsBefore);
+      expect(
+        await repository.getIdempotencyRecord(
+          TENANT,
+          DEV_A,
+          `POST /daily-reports/${workDate}/apply-rewrite`,
+          'postgres-rewrite-apply',
+        ),
+      ).toBeNull();
+      expect(await repository.getDailyReport(TENANT, DEV_A, workDate)).toMatchObject({
+        status: 'deleted',
+        version: 2,
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('replaces an expired idempotency record when its scope is reused', async () => {

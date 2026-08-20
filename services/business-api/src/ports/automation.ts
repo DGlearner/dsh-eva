@@ -15,6 +15,15 @@ export interface StartAutomationInput {
   requestId: string;
 }
 
+export interface GetAutomationInput {
+  runId: UUID;
+  requestId: string;
+  tenantId: UUID;
+  actorUserId: UUID;
+  kind: AutomationKind;
+  correlationId: UUID;
+}
+
 export interface AutomationProviderRun {
   id: UUID;
   status: AutomationRunStatus;
@@ -27,5 +36,5 @@ export interface AutomationProviderRun {
 export interface AutomationPort {
   readonly provider: 'fake' | 'dsh';
   start(input: StartAutomationInput): Promise<AutomationProviderRun>;
-  get(runId: UUID, requestId: string, kind: AutomationKind): Promise<AutomationProviderRun>;
+  get(input: GetAutomationInput): Promise<AutomationProviderRun>;
 }

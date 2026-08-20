@@ -133,6 +133,59 @@ describe('Daily Reports API', () => {
     expect(audits.filter((event) => event.action === 'daily_report.published')).toHaveLength(1);
   });
 
+  it('rejects applying an old rewrite after its report was soft-deleted', async () => {
+    const context = createTestContext();
+    contexts.push(context);
+    const workDate = '2026-08-20';
+    const report = await context.app.inject({
+      method: 'PUT',
+      url: `/company-api/v1/daily-reports/${workDate}`,
+      headers: await authHeaders(actors.devA),
+      payload: { content, expected_version: 0 },
+    });
+    const rewrite = await context.app.inject({
+      method: 'POST',
+      url: `/company-api/v1/daily-reports/${workDate}/rewrite-runs`,
+      headers: await authHeaders(actors.devA, { 'idempotency-key': 'deleted-rewrite-start' }),
+      payload: { mode: 'polish', expected_version: 1 },
+    });
+    let rewritten = content;
+    for (let index = 0; index < 2; index += 1) {
+      const polled = await context.app.inject({
+        method: 'GET',
+        url: `/company-api/v1/automation-operations/${rewrite.json().id}`,
+        headers: await authHeaders(actors.devA),
+      });
+      rewritten = polled.json().result?.content ?? rewritten;
+    }
+    expect(
+      (
+        await context.app.inject({
+          method: 'DELETE',
+          url: `/company-api/v1/daily-reports/${workDate}?expected_version=1`,
+          headers: await authHeaders(actors.devA),
+        })
+      ).statusCode,
+    ).toBe(204);
+
+    const applied = await context.app.inject({
+      method: 'POST',
+      url: `/company-api/v1/daily-reports/${workDate}/apply-rewrite`,
+      headers: await authHeaders(actors.devA, { 'idempotency-key': 'deleted-rewrite-apply' }),
+      payload: {
+        operation_id: rewrite.json().id,
+        content: rewritten,
+        expected_version: 2,
+      },
+    });
+
+    expect(applied.statusCode).toBe(409);
+    expect(applied.json()).toMatchObject({ code: 'daily_report_deleted' });
+    expect(
+      await context.repository.getDailyReport(actors.devA.tenantId, actors.devA.userId, workDate),
+    ).toMatchObject({ id: report.json().id, status: 'deleted', version: 2 });
+  });
+
   it('uses Asia/Shanghai for the default department date and includes missing members', async () => {
     const context = createTestContext('2026-08-18T16:30:00Z');
     contexts.push(context);

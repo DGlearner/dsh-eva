@@ -579,6 +579,7 @@ export class TaskService {
           updated_at: now,
           completed_at: null,
         });
+        await this.syncTaskReviewTerminal(operation, actor.tenantId);
         return operation;
       },
     });
@@ -596,10 +597,15 @@ export class TaskService {
       (initial.status === 'queued' || initial.status === 'running') &&
       initial.provider_run_id !== null
     ) {
-      providerRun = await this.automation.get(
-        initial.provider_run_id,
-        actor.requestId,
-        initial.kind,
+      providerRun = this.normalizeProviderRun(
+        await this.automation.get({
+          runId: initial.provider_run_id,
+          requestId: actor.requestId,
+          tenantId: actor.tenantId,
+          actorUserId: initial.actor_user_id,
+          kind: initial.kind,
+          correlationId: initial.resource_id,
+        }),
       );
     }
     return this.repository.transaction(async () => {
@@ -622,9 +628,7 @@ export class TaskService {
         await this.repository.saveAutomationOperation(updated, operation.version);
         current = updated;
       }
-      if (current.kind === 'task_review' && current.status === 'succeeded') {
-        await this.applyReviewResult(current, actor.tenantId);
-      }
+      await this.syncTaskReviewTerminal(current, actor.tenantId);
       return current;
     });
   }
@@ -702,15 +706,17 @@ export class TaskService {
     input: Record<string, unknown>,
     idempotencyKey: string,
   ): Promise<AutomationOperation> {
-    const providerRun = await this.automation.start({
-      tenantId: actor.tenantId,
-      actorUserId: actor.userId,
-      kind,
-      correlationId: resourceId,
-      input,
-      idempotencyKey,
-      requestId: actor.requestId,
-    });
+    const providerRun = this.normalizeProviderRun(
+      await this.automation.start({
+        tenantId: actor.tenantId,
+        actorUserId: actor.userId,
+        kind,
+        correlationId: resourceId,
+        input,
+        idempotencyKey,
+        requestId: actor.requestId,
+      }),
+    );
     const operation: AutomationOperation = {
       id: randomUUID(),
       kind,
@@ -731,41 +737,82 @@ export class TaskService {
     return operation;
   }
 
-  private async applyReviewResult(operation: AutomationOperation, tenantId: UUID): Promise<void> {
-    const result = operation.result as TaskReviewAutomationResult | null;
-    if (result === null) return;
+  private async syncTaskReviewTerminal(
+    operation: AutomationOperation,
+    tenantId: UUID,
+  ): Promise<void> {
+    if (
+      operation.kind !== 'task_review' ||
+      (operation.status !== 'succeeded' &&
+        operation.status !== 'failed' &&
+        operation.status !== 'cancelled')
+    ) {
+      return;
+    }
     const review = (await this.repository.listTaskReviewRuns(operation.resource_id)).find(
       (item) => item.automation_run_id === operation.id,
     );
-    if (review !== undefined && review.status !== 'succeeded') {
+    if (review === undefined) return;
+    const result = operation.result as TaskReviewAutomationResult | null;
+    if (operation.status === 'succeeded' && result === null) return;
+    const synchronized = {
+      status: operation.status,
+      result: operation.status === 'succeeded' ? result!.result : null,
+      summary:
+        operation.status === 'succeeded' ? result!.summary : (operation.error?.message ?? null),
+      checks: operation.status === 'succeeded' ? result!.checks : [],
+      evidence: operation.status === 'succeeded' ? result!.evidence : [],
+      executor_version:
+        operation.status === 'succeeded'
+          ? result!.executor_version
+          : (operation.error?.code ?? 'provider-terminal'),
+      completed_at: operation.completed_at,
+    };
+    if (
+      review.status !== synchronized.status ||
+      review.result !== synchronized.result ||
+      review.summary !== synchronized.summary ||
+      review.executor_version !== synchronized.executor_version ||
+      review.completed_at !== synchronized.completed_at ||
+      JSON.stringify(review.checks) !== JSON.stringify(synchronized.checks) ||
+      JSON.stringify(review.evidence) !== JSON.stringify(synchronized.evidence)
+    ) {
       await this.repository.saveTaskReviewRun(
         {
           ...review,
-          status: 'succeeded',
-          result: result.result,
-          summary: result.summary,
-          checks: result.checks,
-          evidence: result.evidence,
-          executor_version: result.executor_version,
+          ...synchronized,
           version: review.version + 1,
           updated_at: operation.updated_at,
-          completed_at: operation.completed_at,
         },
         review.version,
       );
     }
+    if (operation.status !== 'succeeded') return;
     const current = await this.repository.getTask(tenantId, operation.resource_id);
-    if (current !== null && current.latest_review_result !== result.result) {
+    if (current !== null && current.latest_review_result !== result!.result) {
       await this.repository.saveTask(
         {
           ...current,
-          latest_review_result: result.result,
+          latest_review_result: result!.result,
           version: current.version + 1,
           updated_at: operation.updated_at,
         },
         current.version,
       );
     }
+  }
+
+  private normalizeProviderRun(run: AutomationProviderRun): AutomationProviderRun {
+    if (run.status !== 'succeeded' || run.output !== null) return run;
+    return {
+      ...run,
+      status: 'failed',
+      error: {
+        code: 'provider_contract_invalid',
+        message: 'Automation provider returned no output.',
+      },
+      completedAt: run.completedAt ?? this.clock.now().toISOString(),
+    };
   }
 
   private async assertOperationVisible(

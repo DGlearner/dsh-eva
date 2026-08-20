@@ -247,6 +247,9 @@ export class DailyReportService {
       execute: async () => {
         const report = await this.ownedReport(actor, workDate);
         if (report.version !== input.expected_version) throw versionConflict(report.version);
+        if (report.status === 'deleted') {
+          throw conflict('daily_report_deleted', 'Deleted report cannot apply a rewrite.');
+        }
         const operation = await this.repository.getAutomationOperation(
           actor.tenantId,
           input.operation_id,

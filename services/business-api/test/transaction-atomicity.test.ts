@@ -395,6 +395,75 @@ describe('Business command transaction atomicity', () => {
     });
   });
 
+  it('leaves no rewrite revision or idempotency record when the report is deleted', async () => {
+    const context = createTestContext();
+    contexts.push(context);
+    const workDate = '2026-08-20';
+    const report = await context.app.inject({
+      method: 'PUT',
+      url: `/company-api/v1/daily-reports/${workDate}`,
+      headers: await authHeaders(actors.devA),
+      payload: {
+        content: {
+          completed_today: 'Created a report.',
+          next_plan: 'Apply a rewrite.',
+          blockers: 'None.',
+          other: 'None.',
+          free_text: null,
+        },
+        expected_version: 0,
+      },
+    });
+    const rewrite = await context.app.inject({
+      method: 'POST',
+      url: `/company-api/v1/daily-reports/${workDate}/rewrite-runs`,
+      headers: await authHeaders(actors.devA, { 'idempotency-key': 'deleted-tx-start' }),
+      payload: { mode: 'structure', expected_version: 1 },
+    });
+    let rewritten = report.json().content;
+    for (let index = 0; index < 2; index += 1) {
+      const polled = await context.app.inject({
+        method: 'GET',
+        url: `/company-api/v1/automation-operations/${rewrite.json().id}`,
+        headers: await authHeaders(actors.devA),
+      });
+      rewritten = polled.json().result?.content ?? rewritten;
+    }
+    await context.app.inject({
+      method: 'DELETE',
+      url: `/company-api/v1/daily-reports/${workDate}?expected_version=1`,
+      headers: await authHeaders(actors.devA),
+    });
+    const revisionsBefore = await context.repository.listDailyReportRevisions(report.json().id);
+
+    const failed = await context.app.inject({
+      method: 'POST',
+      url: `/company-api/v1/daily-reports/${workDate}/apply-rewrite`,
+      headers: await authHeaders(actors.devA, { 'idempotency-key': 'deleted-tx-apply' }),
+      payload: {
+        operation_id: rewrite.json().id,
+        content: rewritten,
+        expected_version: 2,
+      },
+    });
+
+    expect(failed.statusCode).toBe(409);
+    expect(await context.repository.listDailyReportRevisions(report.json().id)).toEqual(
+      revisionsBefore,
+    );
+    expect(
+      await context.repository.getIdempotencyRecord(
+        actors.devA.tenantId,
+        actors.devA.userId,
+        `POST /daily-reports/${workDate}/apply-rewrite`,
+        'deleted-tx-apply',
+      ),
+    ).toBeNull();
+    expect(
+      await context.repository.getDailyReport(actors.devA.tenantId, actors.devA.userId, workDate),
+    ).toMatchObject({ status: 'deleted', version: 2 });
+  });
+
   it('rolls back document completion when upload status persistence fails', async () => {
     const context = createTestContext();
     contexts.push(context);

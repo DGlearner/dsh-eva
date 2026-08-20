@@ -5,6 +5,7 @@ import type { AutomationKind, AutomationResult } from '../../domain/models.js';
 import type {
   AutomationPort,
   AutomationProviderRun,
+  GetAutomationInput,
   StartAutomationInput,
 } from '../../ports/automation.js';
 
@@ -46,14 +47,28 @@ const contentSchema = z.object({
   free_text: z.string().nullable(),
 });
 const rewriteResultSchema = z.object({ content: contentSchema });
-const runSchema = z.object({
-  id: z.string().uuid(),
-  status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled']),
-  output: z.record(z.string(), z.unknown()).nullable(),
-  error: z.object({ code: z.string(), message: z.string() }).nullable(),
-  created_at: z.string(),
-  completed_at: z.string().nullable(),
-});
+const timestampSchema = z.string().datetime({ offset: true });
+const runSchema = z
+  .object({
+    id: z.string().uuid(),
+    tenant_id: z.string().uuid(),
+    actor_user_id: z.string().uuid(),
+    purpose: z.enum(['task_split', 'task_review', 'daily_rewrite']),
+    correlation_id: z.string().uuid(),
+    status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled']),
+    output_schema_id: z.enum([
+      'company.requirement-split.v1',
+      'company.task-review.v1',
+      'company.daily-rewrite.v1',
+    ]),
+    output: z.record(z.string(), z.unknown()).nullable(),
+    error: z.object({ code: z.string(), message: z.string() }).strict().nullable(),
+    created_at: timestampSchema,
+    completed_at: timestampSchema.nullable(),
+  })
+  .strict();
+
+type AutomationRunPayload = z.infer<typeof runSchema>;
 
 const schemaIds: Record<AutomationKind, string> = {
   requirement_split: 'company.requirement-split.v1',
@@ -92,20 +107,24 @@ export class InternalAutomationClient implements AutomationPort {
           output_schema_id: schemaIds[input.kind],
         }),
       },
-      input.kind,
+      202,
+      {
+        runId: null,
+        tenantId: input.tenantId,
+        actorUserId: input.actorUserId,
+        kind: input.kind,
+        correlationId: input.correlationId,
+      },
     );
   }
 
-  async get(
-    runId: string,
-    requestId: string,
-    kind: AutomationKind,
-  ): Promise<AutomationProviderRun> {
+  async get(input: GetAutomationInput): Promise<AutomationProviderRun> {
     return this.request(
-      `/internal/v1/automation-runs/${runId}`,
-      requestId,
+      `/internal/v1/automation-runs/${input.runId}`,
+      input.requestId,
       { method: 'GET' },
-      kind,
+      200,
+      input,
     );
   }
 
@@ -113,7 +132,14 @@ export class InternalAutomationClient implements AutomationPort {
     path: string,
     requestId: string,
     init: RequestInit,
-    kind?: AutomationKind,
+    expectedStatus: number,
+    expected: {
+      runId: string | null;
+      tenantId: string;
+      actorUserId: string;
+      kind: AutomationKind;
+      correlationId: string;
+    },
   ): Promise<AutomationProviderRun> {
     let response: Response;
     try {
@@ -129,34 +155,38 @@ export class InternalAutomationClient implements AutomationPort {
     } catch {
       throw dependencyUnavailable('Internal automation service is unavailable.');
     }
-    if (!response.ok) {
+    if (response.status !== expectedStatus) {
       throw dependencyUnavailable(`Internal automation service returned ${response.status}.`);
     }
-    const parsed = runSchema.safeParse(await response.json());
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw dependencyUnavailable('Internal automation service returned invalid JSON.');
+    }
+    const parsed = runSchema.safeParse(body);
     if (!parsed.success) {
       throw dependencyUnavailable('Internal automation service returned an invalid run payload.');
     }
+    this.assertContext(parsed.data, expected);
+    this.assertStatusInvariant(parsed.data);
+    if (parsed.data.status === 'succeeded' && parsed.data.output === null) {
+      return this.invalidProviderOutput(parsed.data, 'Automation provider returned no output.');
+    }
     let output: AutomationResult | null = null;
-    if (parsed.data.output !== null && kind !== undefined) {
+    if (parsed.data.output !== null) {
       const schema =
-        kind === 'requirement_split'
+        expected.kind === 'requirement_split'
           ? splitResultSchema
-          : kind === 'task_review'
+          : expected.kind === 'task_review'
             ? reviewResultSchema
             : rewriteResultSchema;
       const result = schema.safeParse(parsed.data.output);
       if (!result.success) {
-        return {
-          id: parsed.data.id,
-          status: 'failed',
-          output: null,
-          error: {
-            code: 'provider_contract_invalid',
-            message: 'Automation provider output failed schema validation.',
-          },
-          createdAt: parsed.data.created_at,
-          completedAt: parsed.data.completed_at,
-        };
+        return this.invalidProviderOutput(
+          parsed.data,
+          'Automation provider output failed schema validation.',
+        );
       }
       output = result.data as AutomationResult;
     }
@@ -167,6 +197,57 @@ export class InternalAutomationClient implements AutomationPort {
       error: parsed.data.error,
       createdAt: parsed.data.created_at,
       completedAt: parsed.data.completed_at,
+    };
+  }
+
+  private assertContext(
+    run: AutomationRunPayload,
+    expected: {
+      runId: string | null;
+      tenantId: string;
+      actorUserId: string;
+      kind: AutomationKind;
+      correlationId: string;
+    },
+  ): void {
+    if (
+      (expected.runId !== null && run.id !== expected.runId) ||
+      run.tenant_id !== expected.tenantId ||
+      run.actor_user_id !== expected.actorUserId ||
+      run.purpose !== purposes[expected.kind] ||
+      run.correlation_id !== expected.correlationId ||
+      run.output_schema_id !== schemaIds[expected.kind]
+    ) {
+      throw dependencyUnavailable(
+        'Internal automation service returned a run for an unexpected context.',
+      );
+    }
+  }
+
+  private assertStatusInvariant(run: AutomationRunPayload): void {
+    const pending = run.status === 'queued' || run.status === 'running';
+    const valid = pending
+      ? run.output === null && run.error === null && run.completed_at === null
+      : run.status === 'succeeded'
+        ? run.error === null && run.completed_at !== null
+        : run.status === 'failed'
+          ? run.output === null && run.error !== null && run.completed_at !== null
+          : run.output === null && run.completed_at !== null;
+    if (!valid) {
+      throw dependencyUnavailable(
+        'Internal automation service returned a run with an invalid status payload.',
+      );
+    }
+  }
+
+  private invalidProviderOutput(run: AutomationRunPayload, message: string): AutomationProviderRun {
+    return {
+      id: run.id,
+      status: 'failed',
+      output: null,
+      error: { code: 'provider_contract_invalid', message },
+      createdAt: run.created_at,
+      completedAt: run.completed_at,
     };
   }
 }
