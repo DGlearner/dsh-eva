@@ -80,13 +80,6 @@ export function DailyReportsPage() {
     setRewriteSourceRevision(null);
     setNotice(null);
   }, [date]);
-  useEffect(() => {
-    if (!rewriteSourceRevision || rewriteSourceRevision === reportRevision) return;
-    setPreview(null);
-    setRewriteOperationId(null);
-    setRewriteSourceRevision(null);
-    setNotice('日报内容已更新，旧改写预览已失效。');
-  }, [reportRevision, rewriteSourceRevision]);
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['daily-reports'] });
     void queryClient.invalidateQueries({ queryKey: ['daily-report', date] });
@@ -150,6 +143,14 @@ export function DailyReportsPage() {
       if (error instanceof ApiProblem && error.status === 412) void report.refetch();
     },
   });
+  useEffect(() => {
+    if (!rewriteSourceRevision || rewriteSourceRevision === reportRevision) return;
+    apply.reset();
+    setPreview(null);
+    setRewriteOperationId(null);
+    setRewriteSourceRevision(null);
+    setNotice('日报内容已更新，旧改写预览已失效。');
+  }, [apply, reportRevision, rewriteSourceRevision]);
   const remove = useMutation({
     mutationFn: () => api.deleteDailyReport(date, report.data!.version),
     onSuccess: () => {

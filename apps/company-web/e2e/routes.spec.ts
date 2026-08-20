@@ -151,14 +151,22 @@ test('daily rewrite 412 refreshes the report and clears the stale preview', asyn
   await page.getByRole('button', { name: 'AI 润色' }).click();
   await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toBeVisible();
 
+  const conflictResponse = page.waitForResponse(
+    (response) => response.url().includes('/apply-rewrite') && response.status() === 412,
+  );
   await page.getByRole('button', { name: '应用改写' }).click();
-  await expect(page.getByText('内容已被其他操作更新，请刷新后重试。')).toBeVisible();
+  await conflictResponse;
   await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '应用改写' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '保存草稿' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'AI 润色' })).toBeEnabled();
   await expect(page.getByRole('button', { name: '提交日报' })).toBeEnabled();
   await expect(page.getByRole('button', { name: '删除' })).toBeEnabled();
+
+  await page.getByRole('button', { name: '保存草稿' }).click();
+  await expect(page.getByText('日报草稿已保存。')).toBeVisible();
+  await expect(page.getByText('内容已被其他操作更新，请刷新后重试。')).toHaveCount(0);
+  await expect(page.getByText('操作未完成')).toHaveCount(0);
   await expectNoPageOverflow(page);
 });
 
