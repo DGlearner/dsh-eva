@@ -46,6 +46,7 @@ export function DailyReportsPage() {
   const [status, setStatus] = useState('');
   const [preview, setPreview] = useState<Schema<'DailyReportContent'> | null>(null);
   const [rewriteOperationId, setRewriteOperationId] = useState<string | null>(null);
+  const [rewriteSourceRevision, setRewriteSourceRevision] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const reports = useQuery({
@@ -62,6 +63,9 @@ export function DailyReportsPage() {
     retry: false,
   });
   const missing = report.error instanceof ApiProblem && report.error.status === 404;
+  const reportRevision = report.data
+    ? `${date}:${report.data.id}:${report.data.version}:${report.data.status}`
+    : `${date}:missing`;
   const form = useForm<ContentValues>({
     resolver: zodResolver(contentSchema),
     defaultValues: emptyContent,
@@ -73,8 +77,16 @@ export function DailyReportsPage() {
   useEffect(() => {
     setPreview(null);
     setRewriteOperationId(null);
+    setRewriteSourceRevision(null);
     setNotice(null);
   }, [date]);
+  useEffect(() => {
+    if (!rewriteSourceRevision || rewriteSourceRevision === reportRevision) return;
+    setPreview(null);
+    setRewriteOperationId(null);
+    setRewriteSourceRevision(null);
+    setNotice('日报内容已更新，旧改写预览已失效。');
+  }, [reportRevision, rewriteSourceRevision]);
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['daily-reports'] });
     void queryClient.invalidateQueries({ queryKey: ['daily-report', date] });
@@ -101,17 +113,24 @@ export function DailyReportsPage() {
     },
   });
   const rewriteAutomation = useAutomationOperation({
-    scopeKey: date,
+    scopeKey: reportRevision,
     onSucceeded: (operation) => {
       if (operation.result && 'content' in operation.result) {
         setRewriteOperationId(operation.id);
         setPreview(operation.result.content);
         setNotice('日报改写已完成，请确认预览。');
+        void report.refetch();
       } else {
+        setRewriteSourceRevision(null);
         setNotice('改写运行未返回预览。');
       }
     },
   });
+  useEffect(() => {
+    if (!rewriteAutomation.errorMessage) return;
+    setRewriteOperationId(null);
+    setRewriteSourceRevision(null);
+  }, [rewriteAutomation.errorMessage]);
   const apply = useMutation({
     mutationFn: () =>
       api.applyDailyRewrite(date, {
@@ -123,6 +142,7 @@ export function DailyReportsPage() {
       form.reset(data.content);
       setPreview(null);
       setRewriteOperationId(null);
+      setRewriteSourceRevision(null);
       setNotice('改写已应用为草稿。');
       invalidate();
     },
@@ -136,6 +156,16 @@ export function DailyReportsPage() {
     },
   });
   const actionError = save.error ?? publish.error ?? apply.error ?? remove.error;
+  const hasPendingRewrite = rewriteAutomation.isRunning || Boolean(preview);
+  const hasReportMutation =
+    save.isPending || publish.isPending || apply.isPending || remove.isPending;
+  const canApplyRewrite =
+    Boolean(preview) &&
+    Boolean(rewriteOperationId) &&
+    Boolean(report.data) &&
+    report.data?.status !== 'deleted' &&
+    rewriteSourceRevision === reportRevision &&
+    !rewriteAutomation.isRunning;
 
   return (
     <div className={styles.page}>
@@ -197,7 +227,9 @@ export function DailyReportsPage() {
           <Panel title={missing ? `${date} · 新建日报` : `${date} · 编辑日报`}>
             <form
               className={styles.form}
-              onSubmit={form.handleSubmit((values) => save.mutate(values))}
+              onSubmit={form.handleSubmit((values) => {
+                if (!hasPendingRewrite && !hasReportMutation) save.mutate(values);
+              })}
             >
               <Field label="今日完成">
                 <Textarea {...form.register('completed_today')} />
@@ -215,18 +247,30 @@ export function DailyReportsPage() {
                 <Textarea {...form.register('free_text')} />
               </Field>
               <div className={styles.formFooter}>
-                <Button type="submit" pending={save.isPending}>
+                <Button
+                  type="submit"
+                  disabled={hasPendingRewrite || hasReportMutation}
+                  pending={save.isPending}
+                >
                   保存草稿
                 </Button>
                 <Button
                   type="button"
                   icon={<Sparkles />}
-                  disabled={!report.data || report.data.status === 'deleted'}
+                  disabled={
+                    !report.data ||
+                    report.data.status === 'deleted' ||
+                    hasPendingRewrite ||
+                    hasReportMutation
+                  }
                   pending={rewriteAutomation.isRunning}
                   onClick={() => {
+                    if (!report.data || report.data.status === 'deleted' || hasPendingRewrite)
+                      return;
                     setNotice(null);
                     setPreview(null);
                     setRewriteOperationId(null);
+                    setRewriteSourceRevision(reportRevision);
                     void rewriteAutomation.start(() =>
                       api.rewriteDailyReport(date, {
                         mode: 'polish',
@@ -241,7 +285,12 @@ export function DailyReportsPage() {
                   type="button"
                   variant="primary"
                   icon={<Check />}
-                  disabled={!report.data || report.data.status === 'deleted'}
+                  disabled={
+                    !report.data ||
+                    report.data.status === 'deleted' ||
+                    hasPendingRewrite ||
+                    hasReportMutation
+                  }
                   pending={publish.isPending}
                   onClick={() => publish.mutate()}
                 >
@@ -251,7 +300,12 @@ export function DailyReportsPage() {
                   type="button"
                   variant="danger"
                   icon={<Trash2 />}
-                  disabled={!report.data || report.data.status === 'deleted'}
+                  disabled={
+                    !report.data ||
+                    report.data.status === 'deleted' ||
+                    hasPendingRewrite ||
+                    hasReportMutation
+                  }
                   pending={remove.isPending}
                   onClick={() => remove.mutate()}
                 >
@@ -278,15 +332,19 @@ export function DailyReportsPage() {
                   <Button
                     variant="primary"
                     pending={apply.isPending}
-                    disabled={!rewriteOperationId}
-                    onClick={() => apply.mutate()}
+                    disabled={!canApplyRewrite}
+                    onClick={() => {
+                      if (canApplyRewrite) apply.mutate();
+                    }}
                   >
                     应用改写
                   </Button>
                   <Button
+                    disabled={apply.isPending}
                     onClick={() => {
                       setPreview(null);
                       setRewriteOperationId(null);
+                      setRewriteSourceRevision(null);
                     }}
                   >
                     保留原文

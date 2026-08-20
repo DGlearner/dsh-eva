@@ -309,6 +309,8 @@ export function TaskDetailPage() {
   const task = query.data;
   const isManager = meQuery.data?.department?.org_role === 'manager';
   const isAssignee = meQuery.data?.user.id === task.assignee_user_id;
+  const canRunReview =
+    task.status === 'review' && task.submissions.length > 0 && Boolean(isManager);
   const actionError = transition.error ?? submit.error ?? decision.error;
 
   return (
@@ -494,12 +496,11 @@ export function TaskDetailPage() {
             ) : (
               <span className={styles.muted}>尚未运行自动审核。</span>
             )}
-            {task.submissions.at(-1) && (
+            {canRunReview && (
               <div className={styles.formFooter}>
                 <Button
                   icon={<Play />}
                   pending={reviewAutomation.isRunning}
-                  disabled={!isManager}
                   onClick={() => {
                     setNotice(null);
                     void reviewAutomation.start(() =>

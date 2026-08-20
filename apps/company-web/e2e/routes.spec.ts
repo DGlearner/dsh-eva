@@ -57,11 +57,13 @@ test('requirement split polls and applies the returned operation', async ({ page
 test('task submission enters review and automation refreshes review results', async ({ page }) => {
   await page.goto('/workbench/tasks/00000000-0000-4000-8000-000000004002?as=dev_a');
   await expect(page.getByRole('button', { name: '提交审核' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '运行自动审核' })).toHaveCount(0);
   await page.getByLabel('提交说明').fill('任务列表与空状态已完成。');
   await page.getByLabel('证据说明').fill('页面检查通过。');
   await page.getByRole('button', { name: '提交结果' }).click();
   await expect(page.getByText('结果已提交，任务已进入审核。')).toBeVisible();
   await expect(page.getByText('待审核', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '运行自动审核' })).toHaveCount(0);
 
   await page.goto('/workbench/tasks/00000000-0000-4000-8000-000000004003?as=dev_manager');
   const summaries = page.getByText('删除后的重开场景需要人工确认。');
@@ -75,6 +77,26 @@ test('task submission enters review and automation refreshes review results', as
   await expectNoPageOverflow(page);
 });
 
+test('automatic review entry requires a submitted review task and manager role', async ({
+  page,
+}) => {
+  await page.goto('/workbench/tasks/00000000-0000-4000-8000-000000004001?as=dev_manager');
+  await expect(page.getByText('已完成', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '运行自动审核' })).toHaveCount(0);
+
+  await page.goto('/workbench/tasks/00000000-0000-4000-8000-000000004002?as=dev_manager');
+  await expect(page.getByText('进行中', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '运行自动审核' })).toHaveCount(0);
+
+  await page.goto('/workbench/tasks/00000000-0000-4000-8000-000000004003?as=dev_a');
+  await expect(page.getByText('待审核', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '运行自动审核' })).toHaveCount(0);
+
+  await page.goto('/workbench/tasks/00000000-0000-4000-8000-000000004003?as=dev_manager');
+  await expect(page.getByRole('button', { name: '运行自动审核' })).toBeEnabled();
+  await expectNoPageOverflow(page);
+});
+
 test('daily rewrite polls and applies the returned operation', async ({ page }) => {
   await page.goto('/workbench/daily-reports?as=dev_a');
   await page.getByLabel('工作日').fill('2026-08-18');
@@ -82,6 +104,9 @@ test('daily rewrite polls and applies the returned operation', async ({ page }) 
   await page.getByRole('button', { name: 'AI 润色' }).click();
   await expect(page.getByText('正在生成改写预览，请勿重复提交。')).toBeVisible();
   await expect(page.getByText(/日报改写(已排队|运行中)/)).toBeVisible();
+  await expect(page.getByRole('button', { name: '保存草稿' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '提交日报' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '删除' })).toBeDisabled();
   await page.getByLabel('工作日').fill('2026-08-19');
   await page.waitForTimeout(1_200);
   await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toHaveCount(0);
@@ -90,9 +115,32 @@ test('daily rewrite polls and applies the returned operation', async ({ page }) 
   await expect(page.getByLabel('今日完成')).toHaveValue('完成登录接口。');
   await page.getByRole('button', { name: 'AI 润色' }).click();
   await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '保存草稿' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'AI 润色' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '提交日报' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '删除' })).toBeDisabled();
+  await page.getByRole('button', { name: '保留原文' }).click();
+  await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '保存草稿' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '删除' })).toBeEnabled();
+
+  await page.getByRole('button', { name: 'AI 润色' }).click();
+  await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toBeVisible();
   await page.getByRole('button', { name: '应用改写' }).click();
   await expect(page.getByText('改写已应用为草稿。')).toBeVisible();
   await expect(page.getByLabel('今日完成')).toHaveValue('完成登录接口及回归测试。');
+  await expectNoPageOverflow(page);
+});
+
+test('daily rewrite preview expires when the report revision changes', async ({ page }) => {
+  await page.goto('/workbench/daily-reports?as=dev_a&mock=report-changed');
+  await page.getByLabel('工作日').fill('2026-08-18');
+  await expect(page.getByLabel('今日完成')).toHaveValue('完成登录接口。');
+  await page.getByRole('button', { name: 'AI 润色' }).click();
+  await expect(page.getByText('日报内容已更新，旧改写预览已失效。')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '应用改写' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '删除' })).toBeEnabled();
   await expectNoPageOverflow(page);
 });
 

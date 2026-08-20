@@ -22,6 +22,7 @@ type RuntimeOperation = {
   polls: number;
   completed: boolean;
   taskContext?: { taskId: string; submissionId: string };
+  reportContext?: { userId: string; workDate: string; changeBeforeCompletion: boolean };
 };
 
 const runtimeOperations = new Map<string, RuntimeOperation>();
@@ -94,6 +95,7 @@ function queueOperation(
   request: Request,
   template: AutomationOperation,
   taskContext?: RuntimeOperation['taskContext'],
+  reportContext?: RuntimeOperation['reportContext'],
 ) {
   const terminalStatus =
     scenario(request) === 'failed'
@@ -124,7 +126,14 @@ function queueOperation(
     error: null,
     completed_at: null,
   };
-  runtimeOperations.set(id, { operation, finalOperation, polls: 0, completed: false, taskContext });
+  runtimeOperations.set(id, {
+    operation,
+    finalOperation,
+    polls: 0,
+    completed: false,
+    taskContext,
+    reportContext,
+  });
   return operation;
 }
 
@@ -154,6 +163,27 @@ function completeTaskReview(runtime: RuntimeOperation) {
     task.latest_review_result = result.result;
     task.version += 1;
     task.updated_at = fixture.clock.now;
+  }
+  runtime.completed = true;
+}
+
+function completeDailyReportChange(runtime: RuntimeOperation) {
+  if (
+    runtime.completed ||
+    runtime.finalOperation.status !== 'succeeded' ||
+    !runtime.reportContext?.changeBeforeCompletion
+  )
+    return;
+  const report = fixture.daily_reports.find(
+    (item) =>
+      item.user_id === runtime.reportContext?.userId &&
+      item.work_date === runtime.reportContext?.workDate,
+  );
+  if (report) {
+    report.status = 'draft';
+    report.version += 1;
+    report.published_at = null;
+    report.updated_at = fixture.clock.now;
   }
   runtime.completed = true;
 }
@@ -522,6 +552,18 @@ export const handlers = [
       const blocked = await guard(request, { mutation: true });
       if (blocked) return blocked;
       const body = (await request.json()) as Schema<'StartTaskReviewRequest'>;
+      const task = fixture.tasks.find((item) => item.id === params.taskId);
+      if (!task) return problem(404, 'not_found', '未找到任务。');
+      if (me(current(request)?.username)?.department?.org_role !== 'manager')
+        return problem(403, 'forbidden', '只有部门主管可以运行自动审核。');
+      if (task.status !== 'review')
+        return problem(409, 'invalid_task_status', '只有待审核任务可以运行自动审核。');
+      if (task.version !== body.expected_version)
+        return problem(412, 'version_conflict', '任务版本已更新，请刷新后重试。');
+      const submission = fixture.task_submissions.find(
+        (item) => item.id === body.submission_id && item.task_id === task.id,
+      );
+      if (!submission) return problem(409, 'submission_missing', '任务没有可审核的提交记录。');
       const operation = operationTemplate('task_review', String(params.taskId));
       return operation
         ? HttpResponse.json(
@@ -570,7 +612,10 @@ export const handlers = [
         runtime.polls === 1
           ? { ...runtime.operation, status: 'running' }
           : structuredClone(runtime.finalOperation);
-      if (runtime.operation.status === 'succeeded') completeTaskReview(runtime);
+      if (runtime.operation.status === 'succeeded') {
+        completeTaskReview(runtime);
+        completeDailyReportChange(runtime);
+      }
       return HttpResponse.json(runtime.operation);
     }
     const item = fixture.automation_operations.find(
@@ -655,12 +700,20 @@ export const handlers = [
   ),
   http.post(
     `${base}/daily-reports/:workDate/rewrite-runs`,
-    mutableHandler(async ({ request }) => {
+    mutableHandler(async ({ request, params }) => {
       const blocked = await guard(request, { mutation: true });
       if (blocked) return blocked;
       const operation = operationTemplate('daily_rewrite');
+      const user = current(request);
       return operation
-        ? HttpResponse.json(queueOperation(request, operation), { status: 202 })
+        ? HttpResponse.json(
+            queueOperation(request, operation, undefined, {
+              userId: user?.id ?? '',
+              workDate: String(params.workDate),
+              changeBeforeCompletion: scenario(request) === 'report-changed',
+            }),
+            { status: 202 },
+          )
         : problem(404, 'not_found', '没有可用的改写预览。');
     }),
   ),
@@ -674,6 +727,10 @@ export const handlers = [
         (report) => report.user_id === current(request)?.id && report.work_date === params.workDate,
       );
       if (!item) return problem(404, 'not_found', '请先保存日报。');
+      if (item.status === 'deleted')
+        return problem(409, 'daily_report_deleted', '已删除日报不能应用改写。');
+      if (item.version !== body.expected_version)
+        return problem(412, 'version_conflict', '日报版本已更新，请刷新后重试。');
       const operation = runtimeOperations.get(body.operation_id)?.operation;
       if (!operation || operation.kind !== 'daily_rewrite' || operation.status !== 'succeeded') {
         return problem(409, 'operation_not_ready', '日报改写操作尚未成功完成。');
