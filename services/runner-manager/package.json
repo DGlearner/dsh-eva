@@ -3,9 +3,19 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "pnpm run build && node --watch dist/main.js",
+    "start": "node dist/main.js",
+    "test": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
   "dependencies": {
     "@company/contracts": "workspace:*",
     "@company/db": "workspace:*",
+    "@company/dsh-runner": "workspace:*",
     "@company/observability": "workspace:*",
     "dockerode": "^4.0.0",
     "fastify": "^5.0.0",
