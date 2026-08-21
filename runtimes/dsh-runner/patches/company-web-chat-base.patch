@@ -1,0 +1,308 @@
+diff --git a/apps/web/index.html b/apps/web/index.html
+index 0bbf585..e3b9b77 100644
+--- a/apps/web/index.html
++++ b/apps/web/index.html
+@@ -3,8 +3,9 @@
+   <head>
+     <meta charset="utf-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1" />
++    <meta name="company-workbench-entry" content="__COMPANY_WORKBENCH_ENTRY_URL__" />
+     <link rel="manifest" href="/manifest.webmanifest" />
+     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+-    <title>DeepSeek Harness</title>
++    <title>Company DSH</title>
+   </head>
+   <body>
+diff --git a/apps/web/src/main.ts b/apps/web/src/main.ts
+index e3746af..3f7bf77 100644
+--- a/apps/web/src/main.ts
++++ b/apps/web/src/main.ts
+@@ -7,4 +7,22 @@ import { AppWebEntry } from '@deepseek-ai/dsh-client-web'
+
+ const el = document.getElementById('root')
+ if (el === null) throw new Error('web app: missing #root')
++const workbenchEntry = document.createElement('a')
++workbenchEntry.href = document.querySelector<HTMLMetaElement>('meta[name="company-workbench-entry"]')?.content ?? '/workbench'
++workbenchEntry.textContent = '公司工作台'
++workbenchEntry.setAttribute('aria-label', '公司工作台')
++Object.assign(workbenchEntry.style, {
++  position: 'fixed',
++  top: '12px',
++  right: '16px',
++  zIndex: '1000',
++  padding: '7px 10px',
++  border: '1px solid currentColor',
++  borderRadius: '6px',
++  color: 'inherit',
++  background: 'Canvas',
++  textDecoration: 'none',
++  fontSize: '13px',
++})
++document.body.append(workbenchEntry)
+ void new AppWebEntry(el).run()
+diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
+index db66c80..e41f75f 100644
+--- a/apps/web/vite.config.ts
++++ b/apps/web/vite.config.ts
+@@ -92,6 +92,7 @@ function npmPackageOf(id: string): string | undefined {
+ }
+
+ export default defineConfig({
++  base: '/chat/',
+   plugins: [rejectStandaloneServe(), react()],
+   build: {
+     sourcemap: true,
+diff --git a/packages/client/connection/src/api-path.ts b/packages/client/connection/src/api-path.ts
+index 9c70bfb..f3a113b 100644
+--- a/packages/client/connection/src/api-path.ts
++++ b/packages/client/connection/src/api-path.ts
+@@ -5,7 +5,7 @@
+  */
+
+ /** Route prefix owning every api request (`/api` and `/api/<anything>`). */
+-export const API_PATH = '/api'
++export const API_PATH = '/chat/api'
+
+ /** Browser mux-frame WebSocket pathname. */
+ export const MUX_EVENTS_PATH = `${API_PATH}/events.mux`
+diff --git a/packages/client/connection/src/index.ts b/packages/client/connection/src/index.ts
+index 3508491..87f015d 100644
+--- a/packages/client/connection/src/index.ts
++++ b/packages/client/connection/src/index.ts
+@@ -9,6 +9,7 @@ import { API_PATH, HOST_EVENTS_PATH, MUX_EVENTS_PATH } from './api-path.ts'
+ import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from './http-bridge.ts'
+ import { assertTrustedAuthority, isTrustedApiRequest } from './api-request-trust.ts'
+ import { HostConnectionService } from './rpc-host.ts'
++import { createRunnerIdentityVerifier } from './runner-identity.ts'
+ import { rejectWebSocketUpgrade, WebSocketDownlinks } from './websocket-downlink.ts'
+
+ export type {
+@@ -134,6 +135,7 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
+   // Config boundary: a malformed entry fails the load loudly here rather than
+   // silently authorizing its hostname prefix at request time.
+   for (const entry of trustedHosts) assertTrustedAuthority(entry)
++  const verifyRunnerIdentity = createRunnerIdentityVerifier()
+   if (ctx.get('apiProxy') !== undefined) assertImageBodyCapacity(ctx, maxRequestBodyBytes)
+   const connection = new HostConnectionService(ctx, trustedHosts)
+   const fetchHandler = connection.createSharedFetchHandler(API_PATH, {
+@@ -155,7 +157,9 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
+       }
+       const apiProxy = ctx.get('apiProxy')
+       if (apiProxy === undefined) return new Response('not found', { status: 404 })
+-      return toFetchHandler(apiProxy).fetch(request)
++      const apiUrl = new URL(request.url)
++      apiUrl.pathname = `/api${pathname.slice(API_PATH.length)}`
++      return toFetchHandler(apiProxy).fetch(new Request(apiUrl, request))
+     },
+   })
+   const route: WebRoute = {
+@@ -167,6 +171,11 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
+         res.end('forbidden')
+         return
+       }
++      if (!verifyRunnerIdentity(req)) {
++        res.writeHead(401)
++        res.end('unauthorized')
++        return
++      }
+       await bridge(req, res, fetchHandler, maxRequestBodyBytes)
+     },
+   }
+@@ -185,6 +194,10 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
+             rejectWebSocketUpgrade(socket)
+             return
+           }
++          if (!verifyRunnerIdentity(req)) {
++            rejectWebSocketUpgrade(socket)
++            return
++          }
+           return handle(req, socket, head)
+         },
+       }), `client-connection: ${path} WebSocket`)
+diff --git a/packages/client/connection/src/runner-identity.ts b/packages/client/connection/src/runner-identity.ts
+new file mode 100644
+index 0000000..adc6b86
+--- /dev/null
++++ b/packages/client/connection/src/runner-identity.ts
+@@ -0,0 +1,90 @@
++import { createHmac, timingSafeEqual } from 'node:crypto'
++import type { IncomingHttpHeaders } from 'node:http'
++
++interface RunnerIdentityRequest {
++  headers: IncomingHttpHeaders | Headers
++}
++
++interface RunnerIdentityClaims {
++  iss?: unknown
++  aud?: unknown
++  iat?: unknown
++  exp?: unknown
++  tenant_id?: unknown
++  user_id?: unknown
++  runner_id?: unknown
++  request_id?: unknown
++}
++
++function required(env: NodeJS.ProcessEnv, name: string): string {
++  const value = env[name]
++  if (!value) throw new Error(`client-connection: ${name} is required`)
++  return value
++}
++
++function header(headers: IncomingHttpHeaders | Headers, name: string): string | undefined {
++  if (headers instanceof Headers) return headers.get(name) ?? undefined
++  const value = headers[name]
++  return typeof value === 'string' ? value : undefined
++}
++
++function jsonSegment(value: string): Record<string, unknown> | undefined {
++  if (!/^[A-Za-z0-9_-]+$/u.test(value)) return undefined
++  try {
++    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown
++    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
++      ? parsed as Record<string, unknown>
++      : undefined
++  } catch {
++    return undefined
++  }
++}
++
++export function createRunnerIdentityVerifier(
++  env: NodeJS.ProcessEnv = process.env,
++): (request: RunnerIdentityRequest) => boolean {
++  const secret = Buffer.from(required(env, 'COMPANY_RUNNER_IDENTITY_SECRET_BASE64'), 'base64')
++  if (secret.byteLength < 32) {
++    throw new Error('client-connection: Runner identity secret must contain at least 32 bytes')
++  }
++  const tenantId = required(env, 'COMPANY_TENANT_ID')
++  const userId = required(env, 'COMPANY_USER_ID')
++  const runnerId = required(env, 'COMPANY_RUNNER_ID')
++
++  return (request): boolean => {
++    const authorization = header(request.headers, 'authorization')
++    if (!authorization?.startsWith('Bearer ')) return false
++    const token = authorization.slice('Bearer '.length)
++    const segments = token.split('.')
++    if (segments.length !== 3) return false
++    const [protectedSegment, claimsSegment, signatureSegment] = segments as [string, string, string]
++    const protectedHeader = jsonSegment(protectedSegment)
++    const claims = jsonSegment(claimsSegment) as RunnerIdentityClaims | undefined
++    if (protectedHeader?.alg !== 'HS256' || protectedHeader.typ !== 'JWT' || !claims) return false
++    if (!/^[A-Za-z0-9_-]+$/u.test(signatureSegment)) return false
++    const actualSignature = Buffer.from(signatureSegment, 'base64url')
++    const expectedSignature = createHmac('sha256', secret)
++      .update(`${protectedSegment}.${claimsSegment}`, 'ascii')
++      .digest()
++    if (
++      actualSignature.byteLength !== expectedSignature.byteLength
++      || !timingSafeEqual(actualSignature, expectedSignature)
++    ) return false
++
++    const now = Math.floor(Date.now() / 1000)
++    return claims.iss === 'company-control-plane'
++      && claims.aud === 'company-dsh-runner'
++      && claims.tenant_id === tenantId
++      && claims.user_id === userId
++      && claims.runner_id === runnerId
++      && typeof claims.request_id === 'string'
++      && claims.request_id.length >= 8
++      && claims.request_id.length <= 128
++      && typeof claims.iat === 'number'
++      && claims.iat <= now + 30
++      && claims.iat >= now - 120
++      && typeof claims.exp === 'number'
++      && claims.exp > now
++      && claims.exp <= claims.iat + 120
++  }
++}
+diff --git a/packages/client/connection/tsconfig.host.json b/packages/client/connection/tsconfig.host.json
+--- a/packages/client/connection/tsconfig.host.json
++++ b/packages/client/connection/tsconfig.host.json
+@@ -14,6 +14,7 @@
+     "src/loopback-hostname.ts",
+     "src/rpc-host.ts",
+     "src/rpc.ts",
++    "src/runner-identity.ts",
+     "src/websocket-downlink.ts"
+   ],
+   "references": [
+diff --git a/packages/client/connection/src/rpc-host.ts b/packages/client/connection/src/rpc-host.ts
+index 5fac774..8ef4e8c 100644
+--- a/packages/client/connection/src/rpc-host.ts
++++ b/packages/client/connection/src/rpc-host.ts
+@@ -69,6 +69,6 @@ export class HostConnectionService extends Service implements HostConnectionHand
+    */
+   createSharedFetchHandler(
+-    channel: '/api',
++    channel: typeof API_PATH,
+     fallback: FetchHandler,
+   ): FetchHandler {
+     return {
+diff --git a/packages/client/modules/src/index.ts b/packages/client/modules/src/index.ts
+--- a/packages/client/modules/src/index.ts
++++ b/packages/client/modules/src/index.ts
+@@ -150,7 +150,7 @@ function shortHash(input: string | Buffer): string {
+ function graphRow(id: string, rev: string, injectEdges: string[] | undefined, immediately: boolean): WebBootEntry {
+   return {
+     id,
+-    url: `/plugins/${id}/client.js?rev=${rev}`,
++    url: `/chat/plugins/${id}/client.js?rev=${rev}`,
+     rev,
+     ...(injectEdges !== undefined ? { inject: injectEdges } : {}),
+     ...(immediately ? { immediately: true } : {}),
+diff --git a/packages/core/session/src/types.ts b/packages/core/session/src/types.ts
+--- a/packages/core/session/src/types.ts
++++ b/packages/core/session/src/types.ts
+@@ -380,4 +380,13 @@ export type SurfaceOp =
+-export interface SurfaceIntent {
++/** Optional compatibility metadata attached to a newly appended event. */
++export interface SessionEventIntent {
++  /**
++   * Marks a purely informational plugin event as safe for readers that do not
++   * recognize its type to skip during reconstruction.
++   */
++  ignorable?: true
++}
++
++export interface SurfaceIntent extends SessionEventIntent {
+   surfaceOp: SurfaceOp
+   /**
+    * Complete set of known source-event seqs. `assistant/message` may use a
+diff --git a/packages/core/session/src/index.ts b/packages/core/session/src/index.ts
+--- a/packages/core/session/src/index.ts
++++ b/packages/core/session/src/index.ts
+@@ -14,7 +14,7 @@ import type { Scoped } from '@deepseek-ai/dsh-scope'
+ import type { Message } from '@deepseek-ai/dsh-llm'
+ import { SESSION_FORMAT_VERSION, SessionId } from './types.ts'
+ import type { TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
+-import type { CreateSessionOptions, EpochHeader, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SurfaceIntent, SurfaceEventType } from './types.ts'
++import type { CreateSessionOptions, EpochHeader, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventIntent, SessionEventMap, SessionEventType, SessionHeader, SurfaceIntent, SurfaceEventType } from './types.ts'
+ import { snapshotJsonValue } from './json.ts'
+ import { deriveEventMessage, SurfaceManager } from './surface.ts'
+ import type { SessionSurface } from './surface.ts'
+@@ -604,9 +604,13 @@ export class Session {
+   append<T extends SessionEventType>(
+     type: T,
+     data: SessionEventMap[T],
+-    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : []
++    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : [opts?: SessionEventIntent]
+   ): SessionEvent<T> {
+-    const surfaceOpts: SurfaceIntent | undefined = opts[0]
++    const eventOpts: SessionEventIntent | SurfaceIntent | undefined = opts[0]
++    if (eventOpts?.ignorable !== undefined && eventOpts.ignorable !== true) {
++      throw new Error(`session event "${type}" carries an invalid ignorable marker`)
++    }
++    const surfaceOpts = eventOpts as SurfaceIntent | undefined
+     const surfaceMetadata = {
+       ...surfaceOpts?.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: surfaceOpts.sourceEventSeqs },
+       ...surfaceOpts?.surfaceOp === undefined ? {} : { surfaceOp: surfaceOpts.surfaceOp },
+@@ -627,8 +632,9 @@ export class Session {
+     const event = deepFreeze({
+       type,
+       seq: this.log.length,
+       time: Date.now(),
+       data: dataSnapshot,
+       ...(surfaceMetadataSnapshot as { surfaceOp?: unknown; sourceEventSeqs?: unknown }),
++      ...eventOpts?.ignorable === true ? { ignorable: true as const } : {},
+     } as unknown as SessionEvent<T>)
+     this.surfaceManager.validateNext(event as SessionEvent)

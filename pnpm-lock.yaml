@@ -97,6 +97,24 @@ importers:
         specifier: workspace:*
         version: link:../../packages/test-fixtures
 
+  integrations/core-platform-p0:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.19.0
+        version: 22.20.1
+      '@types/ws':
+        specifier: ^8.5.0
+        version: 8.18.1
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 4.1.8
+        version: 4.1.8(@types/node@22.20.1)(jsdom@26.1.0)(msw@2.15.0(@types/node@22.20.1)(typescript@6.0.3))(vite@6.4.3(@types/node@22.20.1)(tsx@4.23.12))
+      ws:
+        specifier: ^8.0.0
+        version: 8.21.3
+
   integrations/rag-mcp: {}
 
   packages/contracts:
@@ -110,6 +128,12 @@ importers:
 
   packages/db:
     dependencies:
+      '@company/test-fixtures':
+        specifier: workspace:*
+        version: link:../test-fixtures
+      argon2:
+        specifier: ^0.44.0
+        version: 0.44.0
       drizzle-orm:
         specifier: ^0.44.0
         version: 0.44.7(@types/pg@8.23.1)(pg@8.23.0)
@@ -144,7 +168,11 @@ importers:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
 
-  runtimes/dsh-runner: {}
+  runtimes/dsh-runner:
+    dependencies:
+      '@company/dsh-extension':
+        specifier: workspace:*
+        version: link:../../extensions/company-dsh
 
   services/business-api:
     dependencies:
@@ -188,6 +216,9 @@ importers:
       '@company/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@company/dsh-runner':
+        specifier: workspace:*
+        version: link:../../runtimes/dsh-runner
       '@company/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -209,10 +240,16 @@ importers:
       pg:
         specifier: ^8.0.0
         version: 8.23.0
+      ws:
+        specifier: ^8.0.0
+        version: 8.21.3
     devDependencies:
       '@types/pg':
         specifier: ^8.15.0
         version: 8.23.1
+      '@types/ws':
+        specifier: ^8.5.0
+        version: 8.18.1
 
   services/runner-manager:
     dependencies:
@@ -222,6 +259,9 @@ importers:
       '@company/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@company/dsh-runner':
+        specifier: workspace:*
+        version: link:../../runtimes/dsh-runner
       '@company/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -1419,6 +1459,9 @@ packages:
 
   '@types/statuses@2.0.6':
     resolution: {integrity: sha512-xMAgYwceFhRA2zY+XbEA7mxYbA093wdiW8Vu6gZPGWy9cmOyU9XesH1tNcEWsKFd5Vzrqx5T3D38PWx1FIIXkA==}
+
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@vitejs/plugin-react@4.7.0':
     resolution: {integrity: sha512-gUu9hwfWvvEDBBmgtAowQCojwZmJ5mcLn3aufeCsitijs3+f2NsrPtlAWIR6OPiqljl96GVCUbLe0HyqIpVaoA==}
@@ -2684,7 +2727,7 @@ snapshots:
       '@babel/code-frame': 7.29.7
       '@babel/generator': 7.29.8
       '@babel/helper-compilation-targets': 7.29.7
-      '@babel/helper-module-transforms': 7.29.7(@babel/core@7.29.7)
+      '@babel/helper-module-transforms': 7.29.7(@babel/core@7.29.7(supports-color@10.2.2))
       '@babel/helpers': 7.29.7
       '@babel/parser': 7.29.8
       '@babel/template': 7.29.7
@@ -2724,7 +2767,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/helper-module-transforms@7.29.7(@babel/core@7.29.7)':
+  '@babel/helper-module-transforms@7.29.7(@babel/core@7.29.7(supports-color@10.2.2))':
     dependencies:
       '@babel/core': 7.29.7(supports-color@10.2.2)
       '@babel/helper-module-imports': 7.29.7
@@ -3461,6 +3504,10 @@ snapshots:
       '@types/node': 18.19.130
 
   '@types/statuses@2.0.6': {}
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 22.20.1
 
   '@vitejs/plugin-react@4.7.0(supports-color@10.2.2)(vite@6.4.3(@types/node@22.20.1)(tsx@4.23.12))':
     dependencies:

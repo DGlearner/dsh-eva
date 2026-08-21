@@ -106,6 +106,26 @@ CREATE TABLE platform.model_configs (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE platform.model_config_stages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  config_id uuid NOT NULL,
+  user_id uuid NOT NULL REFERENCES platform.users(id) ON DELETE CASCADE,
+  base_version integer NOT NULL CHECK (base_version >= 0),
+  config_version integer NOT NULL CHECK (config_version >= 1),
+  base_url text NOT NULL,
+  model text NOT NULL,
+  temperature numeric(3,2) NOT NULL CHECK (temperature >= 0 AND temperature <= 2),
+  max_output_tokens integer CHECK (max_output_tokens >= 1),
+  api_key_ciphertext bytea,
+  api_key_hint text,
+  state text NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'active', 'failed')),
+  error_code text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX model_config_stages_user_pending_uq
+  ON platform.model_config_stages(user_id) WHERE state = 'pending';
+
 CREATE TABLE platform.workspaces (
   workspace_id text PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES platform.tenants(id),
@@ -134,6 +154,12 @@ CREATE TABLE platform.sessions (
 );
 CREATE INDEX sessions_user_last_event_idx ON platform.sessions (user_id, last_event_at DESC, session_id);
 
+CREATE TABLE platform.runner_fences (
+  user_id uuid PRIMARY KEY REFERENCES platform.users(id) ON DELETE CASCADE,
+  fencing_token bigint NOT NULL CHECK (fencing_token >= 1),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE platform.runner_instances (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES platform.tenants(id),
@@ -146,6 +172,7 @@ CREATE TABLE platform.runner_instances (
   config_version integer NOT NULL CHECK (config_version >= 1),
   last_activity_at timestamptz,
   version integer NOT NULL DEFAULT 1 CHECK (version >= 1),
+  fencing_token bigint NOT NULL CHECK (fencing_token >= 1),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

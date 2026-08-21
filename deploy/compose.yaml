@@ -1,0 +1,112 @@
+services:
+  postgres:
+    image: postgres:16.10-bookworm
+    environment:
+      POSTGRES_DB: company_dsh
+      POSTGRES_USER: company_dsh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U company_dsh -d company_dsh]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [platform]
+
+  redis:
+    image: redis:7.4.5-bookworm
+    command: [redis-server, --save, '', --appendonly, 'no']
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [platform]
+
+  migrate-platform:
+    build:
+      context: ..
+      dockerfile: services/control-plane/Dockerfile
+    command: [node, packages/db/dist/migrate-platform.js]
+    environment:
+      DATABASE_URL: postgresql://company_dsh:${POSTGRES_PASSWORD}@postgres:5432/company_dsh
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [platform]
+    profiles: [ops]
+
+  runner-manager:
+    build:
+      context: ..
+      dockerfile: services/runner-manager/Dockerfile
+    user: '10001:${DOCKER_GID:?set DOCKER_GID}'
+    group_add:
+      - '${DOCKER_GID:?set DOCKER_GID}'
+    environment:
+      DATABASE_URL: postgresql://company_dsh:${POSTGRES_PASSWORD}@postgres:5432/company_dsh
+      REDIS_URL: redis://redis:6379/0
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?set INTERNAL_SERVICE_TOKEN}
+      RUNNER_IDENTITY_SECRET_BASE64: ${RUNNER_IDENTITY_SECRET_BASE64:?set RUNNER_IDENTITY_SECRET_BASE64}
+      RUNNER_DATA_ROOT: ${RUNNER_DATA_ROOT:?set absolute RUNNER_DATA_ROOT}
+      RUNNER_IMAGE: ${RUNNER_IMAGE:-company-dsh-runner:wave1}
+      RUNNER_IMAGE_VERSION: ${RUNNER_IMAGE_VERSION:-99f6f02fecdb7dff40c3fbc9470f5907c29f74ca}
+      RUNNER_INGRESS_NETWORK: company-runner
+      RUNNER_EGRESS_NETWORK: company-runner-egress
+      RUNNER_MANAGER_HOST: 0.0.0.0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${RUNNER_DATA_ROOT}:${RUNNER_DATA_ROOT}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks: [platform, company-runner, company-runner-egress]
+
+  control-plane:
+    build:
+      context: ..
+      dockerfile: services/control-plane/Dockerfile
+    user: 10001:10001
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://company_dsh:${POSTGRES_PASSWORD}@postgres:5432/company_dsh
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?set INTERNAL_SERVICE_TOKEN}
+      MODEL_SECRET_KEY_BASE64: ${MODEL_SECRET_KEY_BASE64:?set MODEL_SECRET_KEY_BASE64}
+      RUNNER_IDENTITY_SECRET_BASE64: ${RUNNER_IDENTITY_SECRET_BASE64:?set RUNNER_IDENTITY_SECRET_BASE64}
+      RUNNER_MANAGER_URL: http://runner-manager:8081
+      RUNNER_DATA_ROOT: ${RUNNER_DATA_ROOT:?set absolute RUNNER_DATA_ROOT}
+      CONTROL_PLANE_HOST: 0.0.0.0
+      KNOWLEDGE_PROVIDER: ${KNOWLEDGE_PROVIDER:-fake}
+      REMOTE_MCP_ENABLED: ${REMOTE_MCP_ENABLED:-false}
+      REMOTE_MCP_URL: ${REMOTE_MCP_URL:-}
+      REMOTE_MCP_AUTH_SECRET_REF: ${REMOTE_MCP_AUTH_SECRET_REF:-}
+      WORKBENCH_ENTRY_URL: ${WORKBENCH_ENTRY_URL:-/workbench}
+      MODEL_BASE_URL_ALLOWLIST: ${MODEL_BASE_URL_ALLOWLIST:-}
+    volumes:
+      - ${RUNNER_DATA_ROOT}:${RUNNER_DATA_ROOT}
+    depends_on:
+      postgres: { condition: service_healthy }
+      runner-manager: { condition: service_started }
+    networks: [platform, company-runner]
+
+  gateway:
+    image: nginx:1.27.5-alpine
+    ports: ['${GATEWAY_PORT:-8080}:8080']
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [control-plane]
+    networks: [platform]
+
+volumes:
+  postgres-data:
+
+networks:
+  platform:
+  company-runner:
+    name: company-runner
+    internal: true
+  company-runner-egress:
+    name: company-runner-egress
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_icc: 'false'
