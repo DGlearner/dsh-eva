@@ -29,11 +29,17 @@ const runtimeOperations = new Map<string, RuntimeOperation>();
 let operationSequence = 0;
 
 function problem(status: number, code: string, detail: string): HttpResponse<any> {
+  const titles: Record<number, string> = {
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    409: 'Conflict',
+    412: 'Precondition Failed',
+    503: 'Service Unavailable',
+  };
   return HttpResponse.json(
     {
       type: `urn:company-dsh:${code}`,
-      title:
-        status === 403 ? 'Forbidden' : status === 412 ? 'Precondition Failed' : 'Request Failed',
+      title: titles[status] ?? 'Request Failed',
       status,
       detail,
       code,
@@ -54,6 +60,10 @@ function requestedActor(request: Request) {
 async function guard(request: Request, options: { mutation?: boolean } = {}) {
   const state = scenario(request);
   await delay(state === 'loading' ? 8_000 : 90);
+  if (state === 'unauthorized') return problem(401, 'unauthorized', '登录状态已失效，请重新登录。');
+  if (state === 'unavailable') {
+    return problem(503, 'service_unavailable', 'Company API 暂时不可用，请稍后重试。');
+  }
   if (options.mutation && request.headers.get('X-CSRF-Token') !== 'msw-csrf-token') {
     return problem(403, 'csrf_invalid', 'CSRF Token 无效，请刷新当前会话。');
   }

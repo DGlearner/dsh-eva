@@ -1,5 +1,6 @@
 import createClient from 'openapi-fetch';
 import type { components, paths } from '@company/contracts/company-api';
+import { isMswEnabled } from './runtime';
 
 export type Schema<Name extends keyof components['schemas']> = components['schemas'][Name];
 
@@ -15,12 +16,25 @@ export class ApiProblem extends Error {
   }
 }
 
-const client = createClient<paths>({ baseUrl: '/company-api/v1' });
+const companyApiBaseUrl =
+  typeof window === 'undefined'
+    ? '/company-api/v1'
+    : new URL('/company-api/v1', window.location.origin).toString();
+
+const client = createClient<paths>({
+  baseUrl: companyApiBaseUrl,
+  credentials: 'same-origin',
+});
 let csrfToken: string | null = null;
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
 
 client.use({
   onRequest({ request }) {
-    if (!import.meta.env.DEV || typeof window === 'undefined') return request;
+    if (!isMswEnabled() || typeof window === 'undefined') return request;
     const search = new URLSearchParams(window.location.search);
     const mock = search.get('mock');
     const actor = search.get('as');
@@ -33,6 +47,10 @@ client.use({
 async function unwrap<T>(request: Promise<{ data?: T; error?: unknown; response: Response }>) {
   const { data, error, response } = await request;
   if (!response.ok || error) {
+    if (response.status === 401) {
+      csrfToken = null;
+      unauthorizedHandler?.();
+    }
     throw new ApiProblem(response.status, (error ?? null) as Schema<'ProblemDetails'> | null);
   }
   return data as T;
@@ -62,9 +80,11 @@ async function rememberSession(
 export const api = {
   login: (body: Schema<'LoginRequest'>) => rememberSession(client.POST('/auth/login', { body })),
   logout: async () => {
-    const result = await unwrap(client.POST('/auth/logout', { params: { header: csrfHeaders() } }));
-    csrfToken = null;
-    return result;
+    try {
+      return await unwrap(client.POST('/auth/logout', { params: { header: csrfHeaders() } }));
+    } finally {
+      csrfToken = null;
+    }
   },
   me: () => rememberSession(client.GET('/me')),
   modelConfig: () => unwrap(client.GET('/model-config')),
