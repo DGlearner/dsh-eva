@@ -1,0 +1,237 @@
+.logo {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.logoMark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 35%);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: white;
+  font-size: 12px;
+}
+
+.logoText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.button,
+.iconButton {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 600;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.button {
+  padding: 6px 12px;
+}
+
+.iconButton {
+  width: 34px;
+  padding: 0;
+}
+
+.button svg,
+.iconButton svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.secondary {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.secondary:hover:not(:disabled),
+.ghost:hover:not(:disabled) {
+  background: var(--color-surface-muted);
+}
+
+.ghost {
+  background: transparent;
+}
+
+.danger {
+  border-color: #e7b8b8;
+  background: var(--color-surface);
+  color: var(--color-danger);
+}
+
+.button:disabled,
+.iconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.badge {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.success {
+  border-color: #b8d9c4;
+  background: #e9f5ed;
+  color: var(--color-success);
+}
+
+.warning {
+  border-color: #ead5a7;
+  background: #fbf4e3;
+  color: var(--color-warning);
+}
+
+.error {
+  border-color: #edc1c1;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.info {
+  border-color: #bfd0e8;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.label {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hint,
+.fieldError {
+  margin: 0;
+  font-size: 12px;
+}
+
+.hint {
+  color: var(--color-text-muted);
+}
+
+.fieldError {
+  color: var(--color-danger);
+}
+
+.control {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  background: var(--color-surface);
+}
+
+.control:disabled {
+  background: var(--color-surface-muted);
+}
+
+textarea.control {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-left: 3px solid currentColor;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.alert svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--color-danger);
+}
+
+.alertTitle {
+  margin: 0 0 2px;
+  font-weight: 700;
+}
+
+.alertBody {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.skeleton {
+  overflow: hidden;
+  height: 13px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #e6eaed 20%, #f4f6f7 50%, #e6eaed 80%);
+  background-size: 220% 100%;
+  animation: shimmer 1.25s infinite linear;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
