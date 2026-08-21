@@ -14,9 +14,9 @@
     "contracts:check": "pnpm --filter @company/contracts run check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "oxlint .",
+    "lint": "oxlint --ignore-pattern 'vendor/**' .",
     "test": "pnpm -r --if-present run test",
-    "test:integration": "pnpm -r --if-present run test:integration",
+    "test:integration": "pnpm -r --if-present --workspace-concurrency=1 run test:integration",
     "typecheck": "pnpm -r --if-present run typecheck"
   },
   "devDependencies": {

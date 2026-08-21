@@ -1,0 +1,14 @@
+- id: webserver
+  config:
+    host: '0.0.0.0'
+    port: !!js Number(process.env.COMPANY_RUNNER_PORT ?? 3000)
+
+- id: web-runtime
+  config:
+    printUrl: true
+    surfaceContext: true
+    trustedHosts: !!js 'process.env.COMPANY_RUNNER_AUTHORITY ? [process.env.COMPANY_RUNNER_AUTHORITY] : []'
+
+# Runner images are immutable; the browser-side development reload channel must stay off.
+- id: client-hmr
+  disabled: true

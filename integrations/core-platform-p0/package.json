@@ -1,0 +1,17 @@
+{
+  "name": "@company/core-platform-p0",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:integration": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.8",
+    "ws": "^8.0.0"
+  }
+}
