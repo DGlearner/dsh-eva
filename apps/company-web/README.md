@@ -52,9 +52,11 @@ actor-token exchange. A browser cannot call Business API directly.
 ```bash
 pnpm --filter @company/company-web build
 pnpm --filter @company/company-web preview
+docker build -f apps/company-web/Dockerfile -t company-web:local .
 ```
 
-Deploy the generated `apps/company-web/dist` directory as static files. Configure reverse-proxy
+The Dockerfile builds the SPA and copies it into the public Nginx Gateway image. Alternatively,
+deploy the generated `apps/company-web/dist` directory as static files. Configure reverse-proxy
 locations in this order:
 
 1. `/company-api/v1/*` to the integrated Company API Gateway.
@@ -65,6 +67,15 @@ locations in this order:
 [`spa-fallback.conf`](./spa-fallback.conf) is a minimal Nginx fallback include and must come after
 the API and official DSH proxy locations. It keeps deep links such as `/workbench/tasks/:id` and
 the `/chat` handoff entry on `index.html`.
+
+After the integrated Gateway and seeded development database are running, execute the non-MSW
+browser boundary suite:
+
+```bash
+COMPANY_WEB_LIVE_BASE_URL=http://127.0.0.1:8080 \
+COMPANY_WEB_LIVE_TEST_PASSWORD='<seed-password>' \
+pnpm --filter @company/company-web test:e2e:live
+```
 
 ## Environment variables
 

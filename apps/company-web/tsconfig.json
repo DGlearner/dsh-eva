@@ -15,5 +15,11 @@
     "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
     "types": ["react", "react-dom"]
   },
-  "include": ["src", "proxy-target.ts", "vite.config.ts", "playwright.config.ts"]
+  "include": [
+    "src",
+    "proxy-target.ts",
+    "vite.config.ts",
+    "playwright.config.ts",
+    "playwright.live.config.ts"
+  ]
 }

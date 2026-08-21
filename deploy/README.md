@@ -1,8 +1,10 @@
-# Wave 1 local deployment
+# Integration Business Local Deployment
 
-The reverse proxy exposes only Control Plane `/company-api/v1/*` and the authenticated `/chat`
-Gateway. Runner Manager, PostgreSQL, Redis, and per-user DSH Runner ports remain on internal
-networks. Browser cookies are terminated at Control Plane and are never forwarded to a Runner.
+The public Nginx Gateway serves Company Web, forwards every `/company-api/v1/*` request to Control
+Plane, and forwards authenticated `/chat` HTTP/WebSocket traffic to the current user's DSH Runner.
+Control Plane keeps Platform routes local and exchanges the browser Session for a request-bound
+Actor Token before forwarding Business routes. Business API, Runner Manager, PostgreSQL, Redis, and
+Runner ports remain on internal networks.
 
 ## Prerequisites
 
@@ -11,10 +13,13 @@ networks. Browser cookies are terminated at Control Plane and are never forwarde
 - Docker Engine with Compose
 - An absolute host directory owned by uid `10001` for `RUNNER_DATA_ROOT`
 - The Docker socket group id in `DOCKER_GID`
-- A Node 22 Debian/glibc Runner base image; the Dockerfile defaults to
-  `node:22.19.0-bookworm-slim` because the rc.7 native runtime is not supported on Alpine/musl
+- The prebuilt `company-dsh-runner:wave1` image for `/chat`
 
-## Start
+Generate distinct local secrets with `openssl rand -base64 32`. `ACTOR_TOKEN_SECRET` is shared only
+between Control Plane and Business API. It must not reuse the model, Runner identity, or internal
+service secret.
+
+## Initialize
 
 From the repository root:
 
@@ -25,57 +30,47 @@ docker build --build-arg NODE_IMAGE=node:22.19.0-bookworm-slim \
 cp deploy/.env.example deploy/.env
 mkdir -p /absolute/host/path/company-dsh-users
 sudo chown 10001:10001 /absolute/host/path/company-dsh-users
+docker compose --env-file deploy/.env -f deploy/compose.yaml up -d postgres redis
 docker compose --env-file deploy/.env -f deploy/compose.yaml --profile ops run --rm migrate-platform
+docker compose --env-file deploy/.env -f deploy/compose.yaml --profile ops run --rm migrate-business
+docker compose --env-file deploy/.env -f deploy/compose.yaml --profile ops run --rm seed-platform
+docker compose --env-file deploy/.env -f deploy/compose.yaml --profile ops run --rm seed-business
 docker compose --env-file deploy/.env -f deploy/compose.yaml up --build
 ```
 
-Generate local secrets without committing them:
+Migration commands are safe to repeat. The fixture seeds are development-only: Platform seed resets
+the fixed users' test password, while Business seed inserts only missing fixture rows and does not
+overwrite runtime business changes. Do not run either seed against a real company database.
+
+The integrated application is available at `http://127.0.0.1:${GATEWAY_PORT:-8080}`. Company Web is
+served without MSW. Browser requests cannot reach Business API directly; Nginx always enters Control
+Plane first, and Business API accepts only the internal Actor Token.
+
+## Verification
+
+Run the real Gateway, PostgreSQL, and browser boundary after initialization:
 
 ```bash
-openssl rand -base64 32
+COMPANY_WEB_LIVE_BASE_URL=http://127.0.0.1:${GATEWAY_PORT:-8080} \
+COMPANY_WEB_LIVE_TEST_PASSWORD='<TEST_SEED_PASSWORD from deploy/.env>' \
+npx -y pnpm@11.7.0 --filter @company/company-web test:e2e:live
 ```
 
-Use separate values for `MODEL_SECRET_KEY_BASE64` and `RUNNER_IDENTITY_SECRET_BASE64`. Generate a
-separate random `INTERNAL_SERVICE_TOKEN`. To seed the frozen test users after migration:
-
-```bash
-docker compose --env-file deploy/.env -f deploy/compose.yaml --profile ops run --rm \
-  -e TEST_SEED_PASSWORD='<at-least-8-characters>' \
-  migrate-platform node packages/db/dist/seed-platform.js
-```
-
-The local Gateway is available at `http://127.0.0.1:${GATEWAY_PORT:-8080}`. Build-time Runner
-patch compatibility can be checked without changing the submodule:
-
-```bash
-git -C vendor/deepseek-harness apply --check ../../runtimes/dsh-runner/patches/company-web-chat-base.patch
-```
-
-`MODEL_BASE_URL_ALLOWLIST` is a comma-separated list of exact lowercase `host[:port]` authorities
-that may resolve to private addresses, for example `host.docker.internal:43123`. Leave it empty for
-ordinary public model endpoints. The allowlist never permits non-HTTP protocols or credentials in a
-URL. `RUNNER_DATA_ROOT` must be an absolute host path writable by uid/gid `10001`; every user gets
-separate configuration, Session, workspace, and storage mounts below it.
-
-Run the non-skipping Docker P0 boundary suite from the repository root:
+The existing non-skipping Docker P0 suite still validates DSH HTTP/WebSocket, model, Knowledge Tool,
+Session recovery, and two-user Runner isolation:
 
 ```bash
 npx -y pnpm@11.7.0 --filter @company/core-platform-p0 test:integration
 ```
 
-The suite requires a working Docker Engine and fails instead of skipping when Docker, PostgreSQL,
-Redis, an image build, or a real Runner boundary is unavailable.
+## Configuration Notes
 
-## Knowledge modes
+`MODEL_BASE_URL_ALLOWLIST` is a comma-separated list of exact lowercase `host[:port]` authorities
+that may resolve to private addresses, for example `host.docker.internal:43123`. Leave it empty for
+ordinary public model endpoints. `RUNNER_DATA_ROOT` must be an absolute host path writable by uid/gid
+`10001`; each user gets separate configuration, Session, workspace, and storage mounts below it.
 
-`KNOWLEDGE_PROVIDER=fake` is the Wave 1 development path. `remote-mcp` is only a reserved,
-fail-closed configuration slot: it requires `REMOTE_MCP_ENABLED=true`, an HTTPS URL, and a secret
-reference, but no remote transport is implemented in this wave. Production mode rejects the fake
-provider.
-
-## Deferred work
-
-- Real remote MCP/RAG transport and a production Credentials Provider
-- A real DSH automation executor; `StubAutomationExecutor` is contract-test only
-- Company Web and Business API routing, owned by their separate worktrees
-- Multi-node Runner scheduling and centralized Session persistence
+`KNOWLEDGE_PROVIDER=fake` and `AUTOMATION_PROVIDER=fake` are the integration/business development
+path. Production startup rejects fake providers. Remote MCP/RAG transport, production Credentials
+Provider, a real DSH automation executor, multi-node Runner scheduling, and centralized Session
+persistence remain deferred.
