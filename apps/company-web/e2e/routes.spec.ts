@@ -222,3 +222,35 @@ test('loading empty error forbidden and conflict states are visible', async ({ p
   await page.getByRole('button', { name: '保存配置' }).click();
   await expect(page.getByText('内容已被其他操作更新，请刷新后重试。')).toBeVisible();
 });
+
+test('expired business requests return to login without exposing mock state', async ({ page }) => {
+  await page.goto('/workbench/knowledge/company?as=dev_manager&mock=unauthorized');
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('heading', { name: '登录工作台' })).toBeVisible();
+});
+
+test('service unavailable and forbidden responses stay visible on their pages', async ({
+  page,
+}) => {
+  await page.goto('/workbench/knowledge/company?as=dev_manager&mock=unavailable');
+  await expect(page.getByRole('heading', { name: '无法加载内容' })).toBeVisible();
+  await expect(page.getByText('Company API 暂时不可用，请稍后重试。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '重新加载' })).toBeVisible();
+
+  await page.goto('/workbench/admin/users?as=dev_a');
+  await expect(page.getByRole('heading', { name: '访问受限' })).toBeVisible();
+  await expect(page.getByText('你没有权限访问此内容。')).toBeVisible();
+  await expectNoPageOverflow(page);
+});
+
+test('management mutations show server 409 details', async ({ page }) => {
+  await page.goto('/workbench/admin/users?as=admin');
+  await page.getByRole('button', { name: '创建用户' }).click();
+  await page.getByLabel('用户名').fill('admin');
+  await page.getByLabel('显示名称').fill('重复管理员');
+  await page.getByLabel('临时密码').fill('password123');
+  await page.getByRole('button', { name: '创建', exact: true }).click();
+  await expect(page.getByText('用户名已存在。')).toBeVisible();
+  await expect(page.getByText('操作未完成')).toBeVisible();
+  await expectNoPageOverflow(page);
+});

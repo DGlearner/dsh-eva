@@ -14,7 +14,7 @@ import {
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { IconButton, LogoSlot } from '@company/ui';
 import { api, ApiProblem } from '../api';
-import { LoadingState } from './common';
+import { ErrorState, LoadingState } from './common';
 import styles from '../workbench.module.css';
 
 type NavigationItem = {
@@ -72,9 +72,20 @@ export function AuthBoundary() {
       </main>
     );
   if (query.error instanceof ApiProblem && query.error.status === 401) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}${location.hash}` }}
+      />
+    );
   }
-  if (query.error) return <Navigate to="/login" replace />;
+  if (query.error)
+    return (
+      <main className={styles.content}>
+        <ErrorState error={query.error} retry={() => void query.refetch()} />
+      </main>
+    );
   return <Outlet />;
 }
 
