@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 
+import {
+  migrateBusiness,
+  migratePlatform,
+  seedBusinessFixtures,
+  seedPlatform,
+  type BusinessFixture,
+} from '@company/db';
+import fixtureJson from '@company/test-fixtures/fixture-v1' with { type: 'json' };
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -8,6 +15,7 @@ import { FakeAutomationProvider } from '../src/adapters/automation/fake-automati
 import { PostgresBusinessRepository } from '../src/adapters/postgres/postgres-business-repository.js';
 import { buildBusinessApp } from '../src/app.js';
 import { executeIdempotent } from '../src/application/shared.js';
+import type { BusinessRuntimeConfig } from '../src/config.js';
 import type {
   AuditEvent,
   DailyReport,
@@ -17,10 +25,12 @@ import type {
   TaskSubmission,
 } from '../src/domain/models.js';
 import { FixedClock } from '../src/ports/clock.js';
+import { startBusinessRuntime } from '../src/runtime.js';
 import {
   actors,
   authHeaders,
   DEV_A,
+  DEV_B,
   DEV_DEPARTMENT,
   DEV_MANAGER,
   ISSUER,
@@ -30,6 +40,7 @@ import {
 
 const databaseUrl = process.env.BUSINESS_TEST_DATABASE_URL;
 const describePostgres = databaseUrl === undefined ? describe.skip : describe;
+const fixture = fixtureJson as unknown as BusinessFixture;
 
 describePostgres('PostgreSQL business repository', () => {
   let pool: Pool;
@@ -38,96 +49,28 @@ describePostgres('PostgreSQL business repository', () => {
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: databaseUrl, max: 10 });
-    const client = await pool.connect();
-    try {
-      const database = await client.query<{ current_database: string }>(
-        'select current_database()',
+    const database = await pool.query<{ current_database: string }>('select current_database()');
+    if (!/test/i.test(database.rows[0]!.current_database)) {
+      throw new Error(
+        'BUSINESS_TEST_DATABASE_URL must point to a database whose name contains test.',
       );
-      if (!/test/i.test(database.rows[0]!.current_database)) {
-        throw new Error(
-          'BUSINESS_TEST_DATABASE_URL must point to a database whose name contains test.',
-        );
-      }
-      const schemas = await client.query<{ platform: string | null; business: string | null }>(
-        `select to_regnamespace('platform')::text as platform,
-                to_regnamespace('business')::text as business`,
-      );
-      if (schemas.rows[0]?.platform !== null || schemas.rows[0]?.business !== null) {
-        throw new Error('PostgreSQL integration tests require an empty test database.');
-      }
-      await client.query('begin');
-      await client.query('create schema platform');
-      await client.query(`
-      create table platform.tenants (
-        id uuid primary key,
-        name text not null,
-        created_at timestamptz not null default now()
-      );
-      create table platform.users (
-        id uuid primary key,
-        tenant_id uuid not null references platform.tenants(id),
-        username text not null,
-        display_name text not null,
-        platform_role text not null,
-        status text not null,
-        created_at timestamptz not null default now()
-      );
-      create table platform.departments (
-        id uuid primary key,
-        tenant_id uuid not null references platform.tenants(id),
-        name text not null,
-        status text not null,
-        version integer not null,
-        created_at timestamptz not null default now()
-      );
-      create table platform.department_members (
-        department_id uuid not null references platform.departments(id),
-        user_id uuid not null references platform.users(id),
-        org_role text not null,
-        primary key (department_id, user_id)
-      );
-    `);
-      for (const migration of [
-        '0001_business_v1.sql',
-        '0002_business_guards.sql',
-        'dev/0001_business_fake_v1.sql',
-        'dev/0002_fake_state_guards.sql',
-      ]) {
-        const sql = await readFile(
-          new URL(`../../../packages/db/migrations/business/${migration}`, import.meta.url),
-          'utf8',
-        );
-        await client.query(sql);
-      }
-      await client.query(`insert into platform.tenants (id, name) values ($1, 'test tenant')`, [
-        TENANT,
-      ]);
-      await client.query(
-        `insert into platform.departments (id, tenant_id, name, status, version)
-       values ($1, $2, 'engineering', 'active', 1)`,
-        [DEV_DEPARTMENT, TENANT],
-      );
-      await client.query(
-        `insert into platform.users
-        (id, tenant_id, username, display_name, platform_role, status)
-       values
-        ($1, $3, 'manager', 'Manager', 'member', 'active'),
-        ($2, $3, 'dev-a', 'Dev A', 'member', 'active')`,
-        [DEV_MANAGER, DEV_A, TENANT],
-      );
-      await client.query(
-        `insert into platform.department_members (department_id, user_id, org_role)
-       values ($1, $2, 'manager'), ($1, $3, 'member')`,
-        [DEV_DEPARTMENT, DEV_MANAGER, DEV_A],
-      );
-      await client.query('commit');
-      ownsSchemas = true;
-    } catch (error) {
-      await client.query('rollback');
-      throw error;
-    } finally {
-      client.release();
     }
+    const schemas = await pool.query<{ platform: string | null; business: string | null }>(
+      `select to_regnamespace('platform')::text as platform,
+              to_regnamespace('business')::text as business`,
+    );
+    if (schemas.rows[0]?.platform !== null || schemas.rows[0]?.business !== null) {
+      throw new Error('PostgreSQL integration tests require an empty test database.');
+    }
+    ownsSchemas = true;
+    await migratePlatform(databaseUrl!);
+    await migrateBusiness(databaseUrl!, { includeDevelopment: true, nodeEnv: 'test' });
+    await seedPlatform(
+      databaseUrl!,
+      'business-test-password',
+      fixtureJson as unknown as Parameters<typeof seedPlatform>[2],
+    );
+    await seedBusinessFixtures(databaseUrl!, fixture, 'test');
     repository = new PostgresBusinessRepository(pool);
   });
 
@@ -157,6 +100,83 @@ describePostgres('PostgreSQL business repository', () => {
         'fake_knowledge_documents',
       ]),
     );
+  });
+
+  it('starts the PostgreSQL/fake runtime with Actor Token isolation and survives restart', async () => {
+    const taskId = '00000000-0000-4000-8000-000000004002';
+    const workDate = '2026-08-22';
+    const content = {
+      completed_today: 'Persisted through a Business API restart.',
+      next_plan: 'Verify recovery.',
+      blockers: 'None.',
+      other: 'None.',
+      free_text: null,
+    };
+    const first = await startBusinessRuntime(postgresRuntimeConfig(), { logger: false });
+    try {
+      expect((await fetch(`${first.address}/healthz`)).status).toBe(200);
+      expect(
+        (
+          await fetch(`${first.address}/company-api/v1/tasks`, {
+            headers: { 'x-request-id': 'request-0001' },
+          })
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await fetch(`${first.address}/company-api/v1/tasks/${taskId}`, {
+            headers: await authHeaders(actors.devA),
+          })
+        ).status,
+      ).toBe(200);
+      for (const actor of [actors.devB, actors.productManager]) {
+        expect(
+          (
+            await fetch(`${first.address}/company-api/v1/tasks/${taskId}`, {
+              headers: await authHeaders(actor),
+            })
+          ).status,
+        ).toBe(404);
+      }
+      expect(
+        (
+          await fetch(
+            `${first.address}/company-api/v1/tasks?assignee_user_id=${encodeURIComponent(DEV_B)}`,
+            { headers: await authHeaders(actors.devA) },
+          )
+        ).status,
+      ).toBe(403);
+      const created = await fetch(`${first.address}/company-api/v1/daily-reports/${workDate}`, {
+        method: 'PUT',
+        headers: {
+          ...(await authHeaders(actors.devA)),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ content, expected_version: 0 }),
+      });
+      expect(created.status).toBe(200);
+    } finally {
+      await first.close();
+    }
+
+    const restarted = await startBusinessRuntime(postgresRuntimeConfig(), { logger: false });
+    try {
+      const recovered = await fetch(
+        `${restarted.address}/company-api/v1/daily-reports/${workDate}`,
+        { headers: await authHeaders(actors.devA) },
+      );
+      expect(recovered.status).toBe(200);
+      expect(await recovered.json()).toMatchObject({ content, version: 1 });
+      expect(
+        (
+          await fetch(`${restarted.address}/company-api/v1/daily-reports/${workDate}`, {
+            headers: await authHeaders(actors.devB),
+          })
+        ).status,
+      ).toBe(404);
+    } finally {
+      await restarted.close();
+    }
   });
 
   it('persists tenant-scoped requirements with atomic optimistic locking', async () => {
@@ -190,7 +210,7 @@ describePostgres('PostgreSQL business repository', () => {
       tenant_id: TENANT,
       user_id: DEV_A,
       department_id: DEV_DEPARTMENT,
-      work_date: '2026-08-18',
+      work_date: '2026-08-21',
       content: {
         completed_today: 'done',
         next_plan: 'next',
@@ -525,6 +545,22 @@ function createRequirementFixture(title: string): Requirement {
     created_at: now,
     updated_at: now,
     published_at: now,
+  };
+}
+
+function postgresRuntimeConfig(): BusinessRuntimeConfig {
+  return {
+    nodeEnv: 'test',
+    host: '127.0.0.1',
+    port: 0,
+    repositoryMode: 'postgres',
+    databaseUrl: databaseUrl!,
+    automationMode: 'fake',
+    internalAutomationBaseUrl: null,
+    internalAutomationServiceToken: null,
+    knowledgeMode: 'fake',
+    actorTokenSecret: SECRET,
+    actorTokenIssuer: ISSUER,
   };
 }
 
