@@ -1,5 +1,6 @@
 export * from './app.js';
 export * from './automation.js';
+export * from './business-gateway.js';
 export * from './domain.js';
 export * from './gateway.js';
 export * from './memory-repository.js';

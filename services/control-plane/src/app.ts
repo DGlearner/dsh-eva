@@ -290,10 +290,13 @@ export function buildControlPlane(options: ControlPlaneOptions): FastifyInstance
     void reply.header('x-request-id', request.id);
   });
   app.setErrorHandler((error, request, reply) => {
-    const problem =
-      error instanceof HttpProblem
-        ? error
-        : new HttpProblem(500, 'internal_error', 'The request could not be completed');
+    let problem: HttpProblem;
+    if (error instanceof HttpProblem) problem = error;
+    else if ((error as { statusCode?: unknown }).statusCode === 413)
+      problem = new HttpProblem(413, 'request_body_too_large', 'Request body is too large');
+    else if ((error as { statusCode?: unknown }).statusCode === 415)
+      problem = new HttpProblem(415, 'content_type_unsupported', 'Content type is not supported');
+    else problem = new HttpProblem(500, 'internal_error', 'The request could not be completed');
     void sendProblem(request, reply, problem);
   });
 
