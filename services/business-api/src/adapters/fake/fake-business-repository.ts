@@ -170,6 +170,10 @@ export class FakeBusinessRepository implements BusinessRepository {
     }
   }
 
+  async healthCheck(): Promise<void> {}
+
+  async close(): Promise<void> {}
+
   async transaction<T>(work: () => Promise<T>): Promise<T> {
     if (this.transactionContext.getStore() === true) return work();
 

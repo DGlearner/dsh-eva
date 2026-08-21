@@ -18,6 +18,7 @@ export interface BuildBusinessAppOptions {
   clock: Clock;
   actorTokenSecret: string;
   actorTokenIssuer: string;
+  healthCheck?: () => Promise<void>;
   logger?: boolean;
 }
 
@@ -41,7 +42,10 @@ export function buildBusinessApp(options: BuildBusinessAppOptions): FastifyInsta
   installProblemHandler(app);
   app.decorateRequest('actor');
   app.decorateRequest('errorCode', null);
-  app.get('/healthz', async () => ({ status: 'ok' }));
+  app.get('/healthz', async () => {
+    await options.healthCheck?.();
+    return { status: 'ok' };
+  });
   app.register(
     async (business) => {
       business.addHook('onRequest', async (request) => {

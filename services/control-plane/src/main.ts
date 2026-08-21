@@ -2,6 +2,7 @@ import { createLogger } from '@company/observability';
 import { RunnerConfigMaterializer, type MaterializedConfigStage } from '@company/dsh-runner';
 
 import { buildControlPlane } from './app.js';
+import { registerBusinessGateway } from './business-gateway.js';
 import { registerDshGateway } from './gateway.js';
 import { PgPlatformRepository } from './pg-repository.js';
 import { RunnerManagerHttpClient } from './runner-client.js';
@@ -54,6 +55,12 @@ registerDshGateway(app, {
   runnerLocator: runnerClient,
   runnerIdentitySecret: Buffer.from(required('RUNNER_IDENTITY_SECRET_BASE64'), 'base64'),
   workbenchEntryUrl: process.env.WORKBENCH_ENTRY_URL ?? '/workbench',
+});
+registerBusinessGateway(app, {
+  repository,
+  businessApiUrl: required('BUSINESS_API_URL'),
+  actorTokenSecret: required('ACTOR_TOKEN_SECRET'),
+  actorTokenIssuer: process.env.ACTOR_TOKEN_ISSUER ?? 'company-control-plane',
 });
 
 const address = await app.listen({

@@ -62,6 +62,10 @@ export class PostgresBusinessRepository implements BusinessRepository {
     await this.pool?.end();
   }
 
+  async healthCheck(): Promise<void> {
+    await this.client.query('select 1');
+  }
+
   async transaction<T>(work: () => Promise<T>): Promise<T> {
     if (this.transactionContext.getStore() !== undefined) return work();
 

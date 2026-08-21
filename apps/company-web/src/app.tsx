@@ -9,6 +9,7 @@ import { LoginPage } from './pages/login';
 import { ModelSettingsPage } from './pages/model-settings';
 import { RequirementDetailPage, RequirementsPage } from './pages/requirements';
 import { TaskDetailPage, TasksBoardPage } from './pages/tasks';
+import { setUnauthorizedHandler } from './api';
 
 export const routes = [
   { path: '/login', element: <LoginPage /> },
@@ -47,6 +48,18 @@ export const queryClient = new QueryClient({
     mutations: { retry: false },
   },
 });
+
+export function handleUnauthorized() {
+  const location = router.state.location;
+  queryClient.clear();
+  if (location.pathname === '/login') return;
+  void router.navigate('/login', {
+    replace: true,
+    state: { from: `${location.pathname}${location.search}${location.hash}` },
+  });
+}
+
+setUnauthorizedHandler(handleUnauthorized);
 
 export function App() {
   return (
