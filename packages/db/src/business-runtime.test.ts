@@ -16,6 +16,8 @@ describe('Business database runtime', () => {
     expect(migrations.map(({ name }) => name)).toEqual([
       '0001_business_v1.sql',
       '0002_business_guards.sql',
+      '0003_daily_report_scopes.sql',
+      '0004_model_automation_provider.sql',
       'dev/0001_business_fake_v1.sql',
       'dev/0002_fake_state_guards.sql',
     ]);

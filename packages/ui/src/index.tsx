@@ -11,11 +11,9 @@ import styles from './ui.module.css';
 
 export function LogoSlot({ compact = false }: { compact?: boolean }) {
   return (
-    <span className={styles.logo} aria-label="Company DSH">
-      <span className={styles.logoMark} aria-hidden="true">
-        DSH
-      </span>
-      {!compact && <span className={styles.logoText}>Company Workbench</span>}
+    <span className={styles.logo} aria-label="芯鲜派智能协作平台">
+      <img className={styles.logoImage} src="/brand/freshpi-logo.png" alt="" aria-hidden="true" />
+      {!compact && <span className={styles.logoText}>智能协作平台</span>}
     </span>
   );
 }

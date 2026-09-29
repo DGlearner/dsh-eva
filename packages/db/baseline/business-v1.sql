@@ -83,7 +83,7 @@ CREATE TABLE business.automation_operations (
   actor_user_id uuid NOT NULL REFERENCES platform.users(id),
   resource_type text NOT NULL,
   resource_id uuid NOT NULL,
-  provider text NOT NULL CHECK (provider IN ('fake', 'dsh')),
+  provider text NOT NULL CHECK (provider IN ('fake', 'model', 'dsh')),
   provider_run_id uuid,
   status text NOT NULL DEFAULT 'queued'
     CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
@@ -124,6 +124,9 @@ CREATE TABLE business.daily_reports (
   user_id uuid NOT NULL REFERENCES platform.users(id),
   department_id uuid NOT NULL REFERENCES platform.departments(id),
   work_date date NOT NULL,
+  scope text NOT NULL DEFAULT 'department'
+    CHECK (scope IN ('personal', 'department', 'company', 'task')),
+  task_id uuid REFERENCES business.tasks(id),
   content jsonb NOT NULL,
   status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'deleted')),
   published_at timestamptz,
@@ -131,12 +134,21 @@ CREATE TABLE business.daily_reports (
   version integer NOT NULL DEFAULT 1 CHECK (version >= 1),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, user_id, work_date)
+  CHECK ((scope = 'task') = (task_id IS NOT NULL))
 );
+CREATE UNIQUE INDEX daily_reports_tenant_user_date_scope_uq
+  ON business.daily_reports (tenant_id, user_id, work_date, scope)
+  WHERE task_id IS NULL;
+CREATE UNIQUE INDEX daily_reports_tenant_user_date_task_uq
+  ON business.daily_reports (tenant_id, user_id, work_date, task_id)
+  WHERE scope = 'task';
 CREATE INDEX daily_reports_department_date_idx
   ON business.daily_reports (department_id, work_date DESC, status);
 CREATE INDEX daily_reports_user_date_idx
   ON business.daily_reports (user_id, work_date DESC);
+CREATE INDEX daily_reports_task_date_idx
+  ON business.daily_reports (task_id, work_date DESC)
+  WHERE task_id IS NOT NULL;
 
 CREATE TABLE business.daily_report_revisions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

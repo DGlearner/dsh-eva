@@ -12,6 +12,7 @@ export type RunnerResourceTemplateOptions = {
   imageVersion: string;
   dataRoot: string;
   runnerIdentityRootSecret: Uint8Array;
+  agentToolGatewayUrl: string;
   ingressNetworkName?: string;
   egressNetworkName?: string;
   internalPort?: number;
@@ -26,6 +27,7 @@ export class RunnerResourceTemplate {
   constructor(private readonly options: RunnerResourceTemplateOptions) {
     if (!options.image || !options.imageVersion)
       throw new Error('Runner image and version are required');
+    validateAgentToolGatewayUrl(options.agentToolGatewayUrl);
     this.dataRoot = resolve(options.dataRoot);
   }
 
@@ -89,10 +91,32 @@ export class RunnerResourceTemplate {
         userId: input.userId,
         runnerId: input.runnerId,
       }).toString('base64'),
+      agentToolGatewayUrl: this.options.agentToolGatewayUrl,
       memoryBytes: this.options.memoryBytes ?? 2 * 1024 * 1024 * 1024,
       nanoCpus: this.options.nanoCpus ?? 1_000_000_000,
       pidsLimit: this.options.pidsLimit ?? 256,
     };
+  }
+}
+
+function validateAgentToolGatewayUrl(value: string): void {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('Agent Tool Gateway URL must be a valid absolute URL');
+  }
+  if (
+    (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/internal/v1/agent-tools/query-company-system' ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(
+      'Agent Tool Gateway URL must be HTTP(S) and use /internal/v1/agent-tools/query-company-system',
+    );
   }
 }
 

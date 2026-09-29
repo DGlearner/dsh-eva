@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import { posix } from 'node:path';
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { SignJWT } from 'jose';
@@ -6,7 +7,7 @@ import WebSocket, { WebSocketServer } from 'ws';
 
 import { deriveRunnerIdentitySecret } from '@company/dsh-runner';
 
-import type { PlatformRepository, UserRecord } from './domain.js';
+import type { ModelConfigRecord, PlatformRepository, UserRecord } from './domain.js';
 import { HttpProblem } from './problems.js';
 import { authenticate, hashOpaque, parseCookies, SESSION_COOKIE } from './security.js';
 import { SessionIndexBridge, type RunnerSessionSnapshot } from './session-index-bridge.js';
@@ -37,13 +38,14 @@ const SAFE_METHODS = new Set([
   'agentPreset.select',
   'llm.providers',
   'llm.models',
+  'settings.describe',
+  'dynamicCordisRunner/inventory',
+  'dynamicCordisRunner/syncInspectManifest',
 ]);
 
 const EXPLICITLY_DENIED = new Set([
   'host.pickDirectory',
   'host.openPath',
-  'host.listDirectory',
-  'host.createDirectory',
   'agentPreset.read',
   'agentPreset.copy',
   'agentPreset.openDocument',
@@ -52,6 +54,7 @@ const EXPLICITLY_DENIED = new Set([
 
 const MAX_PROXY_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_WS_BUFFERED_BYTES = 2 * 1024 * 1024;
+const RUNNER_WORKSPACES_ROOT = '/dsh-user/workspaces';
 
 export function normalizeWebSocketCloseCode(code: number): number {
   if (
@@ -82,6 +85,8 @@ export type DshGatewayOptions = {
   repository: PlatformRepository;
   runnerLocator: DshRunnerLocator;
   runnerIdentitySecret: Uint8Array;
+  prepareUnconfiguredRunner?: (user: UserRecord) => Promise<number>;
+  prepareRunner?: (user: UserRecord, model: ModelConfigRecord | null) => Promise<number>;
   fetch?: typeof globalThis.fetch;
   sessionBridge?: SessionIndexBridge;
   workbenchEntryUrl?: string;
@@ -106,14 +111,89 @@ type DshClientResponse = {
 };
 
 export function isAllowedDshMethod(method: string): boolean {
-  if (
-    EXPLICITLY_DENIED.has(method) ||
-    method.startsWith('settings.') ||
-    method.startsWith('credentials.')
-  ) {
+  if (EXPLICITLY_DENIED.has(method) || method.startsWith('credentials.')) {
     return false;
   }
   return SAFE_METHODS.has(method);
+}
+
+function isAllowedDshRequest(method: string, payload: Record<string, unknown>): boolean {
+  if (isAllowedDshMethod(method)) return true;
+  if (method === 'host.listDirectory') {
+    return (
+      Object.keys(payload).every((key) => key === 'path') &&
+      runnerWorkspacePath(payload.path, true) !== null
+    );
+  }
+  if (method === 'host.createDirectory') {
+    return (
+      Object.keys(payload).length === 2 &&
+      Object.keys(payload).every((key) => key === 'path' || key === 'name') &&
+      runnerWorkspacePath(payload.path, false) !== null &&
+      typeof payload.name === 'string' &&
+      payload.name.trim().length > 0 &&
+      payload.name.length <= 255 &&
+      payload.name !== '.' &&
+      payload.name !== '..' &&
+      !payload.name.includes('/') &&
+      !payload.name.includes('\\') &&
+      !payload.name.includes('\0')
+    );
+  }
+  if (method !== 'settings.mutate') return false;
+
+  const keys = Object.keys(payload);
+  if (!keys.every((key) => ['ns', 'ops', 'expectedRevision'].includes(key))) return false;
+  if (payload.ns !== 'ui-onboarding' || !Array.isArray(payload.ops) || payload.ops.length !== 1) {
+    return false;
+  }
+  if (
+    payload.expectedRevision !== undefined &&
+    (!Number.isSafeInteger(payload.expectedRevision) || Number(payload.expectedRevision) < 0)
+  ) {
+    return false;
+  }
+
+  const [operation] = payload.ops;
+  if (!operation || typeof operation !== 'object' || Array.isArray(operation)) return false;
+  const op = operation as Record<string, unknown>;
+  if (!Object.keys(op).every((key) => ['op', 'path', 'value'].includes(key))) return false;
+  return (
+    op.op === 'set' &&
+    Array.isArray(op.path) &&
+    op.path.length === 1 &&
+    op.path[0] === 'welcomeNoticeVersion' &&
+    typeof op.value === 'string' &&
+    op.value.length > 0 &&
+    op.value.length <= 128
+  );
+}
+
+function runnerWorkspacePath(value: unknown, allowDefault: boolean): string | null {
+  if (value === undefined) return allowDefault ? RUNNER_WORKSPACES_ROOT : null;
+  if (
+    typeof value !== 'string' ||
+    value.length < 1 ||
+    value.length > 4096 ||
+    value.includes('\0')
+  ) {
+    return null;
+  }
+  const resolved = posix.resolve(value);
+  return resolved === RUNNER_WORKSPACES_ROOT || resolved.startsWith(`${RUNNER_WORKSPACES_ROOT}/`)
+    ? resolved
+    : null;
+}
+
+function normalizeDshPayload(
+  method: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  if (method !== 'host.listDirectory' && method !== 'host.createDirectory') return payload;
+  return {
+    ...payload,
+    path: runnerWorkspacePath(payload.path, method === 'host.listDirectory'),
+  };
 }
 
 export function registerDshGateway(app: FastifyInstance, options: DshGatewayOptions): void {
@@ -123,7 +203,10 @@ export function registerDshGateway(app: FastifyInstance, options: DshGatewayOpti
   const locate = async (user: UserRecord, requestId: string): Promise<LocatedRunner> => {
     const runner = await options.repository.withUserConfigLock(user.id, async () => {
       const config = await options.repository.getModelConfig(user.id);
-      if (!config) {
+      const configVersion = options.prepareRunner
+        ? await options.prepareRunner(user, config)
+        : (config?.configVersion ?? (await options.prepareUnconfiguredRunner?.(user)));
+      if (configVersion === undefined) {
         throw new HttpProblem(
           409,
           'model_config_required',
@@ -133,7 +216,7 @@ export function registerDshGateway(app: FastifyInstance, options: DshGatewayOpti
       return options.runnerLocator.ensure({
         tenantId: user.tenantId,
         userId: user.id,
-        configVersion: config.configVersion,
+        configVersion,
         requestId,
       });
     });
@@ -177,21 +260,25 @@ export function registerDshGateway(app: FastifyInstance, options: DshGatewayOpti
     );
   });
 
-  app.post('/chat/api/:method', async (request, reply) => {
+  app.post('/chat/api/*', async (request, reply) => {
     const context = await authenticate(request, options.repository);
-    const { method } = request.params as { method: string };
+    const method = (request.params as { '*': string })['*'];
     const isResponseCarrier = method === 'respond';
-    if (!isResponseCarrier && !isAllowedDshMethod(method)) {
+    const envelope = isResponseCarrier
+      ? parseClientResponse(request.body)
+      : parseEnvelope(request.body, method);
+    if (
+      !isResponseCarrier &&
+      (envelope.type !== 'client-request' || !isAllowedDshRequest(method, envelope.payload))
+    ) {
       throw new HttpProblem(
         403,
         'dsh_method_denied',
         'The DSH method is not available in the company profile',
       );
     }
-    const envelope = isResponseCarrier
-      ? parseClientResponse(request.body)
-      : parseEnvelope(request.body, method);
     if (envelope.type === 'client-request') {
+      envelope.payload = normalizeDshPayload(method, envelope.payload);
       const sessionId = sessionIdFromPayload(envelope.payload);
       if (sessionId && method !== 'session.create')
         await bridge.assertOwned(context.user.id, sessionId);
@@ -203,7 +290,7 @@ export function registerDshGateway(app: FastifyInstance, options: DshGatewayOpti
       runner.runnerId,
       request.id,
     );
-    const upstream = new URL(`/chat/api/${method}`, runner.internalEndpoint);
+    const upstream = new URL(`/api/${method}`, runner.internalEndpoint);
     const response = await fetcher(upstream, {
       method: 'POST',
       redirect: 'manual',
@@ -477,7 +564,7 @@ function registerWebSocketProxy(
         requestId,
       );
       sockets.handleUpgrade(request, socket, head, (browser) => {
-        const target = new URL(path, runner.internalEndpoint);
+        const target = new URL(`/api${path.slice('/chat/api'.length)}`, runner.internalEndpoint);
         target.protocol = 'ws:';
         const upstream = new WebSocket(target, {
           headers: { authorization: `Bearer ${identity}`, 'x-request-id': requestId },

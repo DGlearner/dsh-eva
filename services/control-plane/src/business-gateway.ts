@@ -13,7 +13,16 @@ const ACTOR_TOKEN_LIFETIME_SECONDS = 60;
 const MAX_BUSINESS_REQUEST_BYTES = 1024 * 1024;
 const MAX_BUSINESS_RESPONSE_BYTES = 4 * 1024 * 1024;
 
-type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
+export type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
+
+export type BusinessActorIdentity = {
+  tenantId: string;
+  userId: string;
+  sessionId: string;
+  platformRole: AuthContext['user']['platformRole'];
+  departmentId: string | null;
+  orgRole: NonNullable<AuthContext['membership']>['orgRole'] | null;
+};
 
 type BusinessGatewayOptions = {
   repository: PlatformRepository;
@@ -102,7 +111,20 @@ export function registerBusinessGateway(
         throw new HttpProblem(500, 'internal_error', 'Authentication context is missing');
       const publicUrl = parsePublicRequestUrl(request);
       const requestBody = serializeRequestBody(request);
-      const actorToken = await signActorToken(context, request.id, signingKey, issuer, now());
+      const actorToken = await signBusinessActorToken(
+        {
+          tenantId: context.user.tenantId,
+          userId: context.user.id,
+          sessionId: context.session.id,
+          platformRole: context.user.platformRole,
+          departmentId: context.membership?.departmentId ?? null,
+          orgRole: context.membership?.orgRole ?? null,
+        },
+        request.id,
+        signingKey,
+        issuer,
+        now(),
+      );
       const headers = upstreamHeaders(request, actorToken, requestBody !== undefined);
       const upstreamUrl = new URL(`${publicUrl.pathname}${publicUrl.search}`, businessApi.origin);
 
@@ -126,7 +148,7 @@ export function registerBusinessGateway(
   });
 }
 
-function parseBusinessApiUrl(value: string): URL {
+export function parseBusinessApiUrl(value: string): URL {
   let url: URL;
   try {
     url = new URL(value);
@@ -189,8 +211,8 @@ function singleHeader(value: string | string[] | undefined): string | undefined 
   return Array.isArray(value) ? value[0] : value;
 }
 
-async function signActorToken(
-  context: AuthContext,
+export async function signBusinessActorToken(
+  identity: BusinessActorIdentity,
   requestId: string,
   signingKey: Uint8Array,
   issuer: string,
@@ -198,12 +220,12 @@ async function signActorToken(
 ): Promise<string> {
   const nowSeconds = Math.floor(issuedAt.getTime() / 1000);
   return new SignJWT({
-    tenant_id: context.user.tenantId,
-    user_id: context.user.id,
-    session_id: context.session.id,
-    platform_role: context.user.platformRole,
-    department_id: context.membership?.departmentId ?? null,
-    org_role: context.membership?.orgRole ?? null,
+    tenant_id: identity.tenantId,
+    user_id: identity.userId,
+    session_id: identity.sessionId,
+    platform_role: identity.platformRole,
+    department_id: identity.departmentId,
+    org_role: identity.orgRole,
     request_id: requestId,
   })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
@@ -214,7 +236,7 @@ async function signActorToken(
     .sign(signingKey);
 }
 
-async function sendUpstreamResponse(
+export async function sendUpstreamResponse(
   response: Response,
   reply: FastifyReply,
 ): Promise<FastifyReply> {

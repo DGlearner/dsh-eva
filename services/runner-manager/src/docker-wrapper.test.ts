@@ -22,6 +22,7 @@ describe('DockerodeRunnerPort', () => {
       ingressNetworkName: 'company-internal',
       egressNetworkName: 'company-egress',
       identitySecretBase64: Buffer.alloc(32, 9).toString('base64'),
+      agentToolGatewayUrl: 'http://control-plane:8080/internal/v1/agent-tools/query-company-system',
       internalPort: 3000,
       memoryBytes: 1_073_741_824,
       nanoCpus: 1_000_000_000,
@@ -38,6 +39,9 @@ describe('DockerodeRunnerPort', () => {
     expect(options.Env).toContain('COMPANY_RUNNER_AUTHORITY=dsh-runner-user-a:3000');
     expect(options.Env).toContain(
       `COMPANY_RUNNER_IDENTITY_SECRET_BASE64=${Buffer.alloc(32, 9).toString('base64')}`,
+    );
+    expect(options.Env).toContain(
+      'COMPANY_AGENT_TOOL_GATEWAY_URL=http://control-plane:8080/internal/v1/agent-tools/query-company-system',
     );
     expect(options.HostConfig.NetworkMode).toBe('company-internal');
     expect(options.HostConfig.PortBindings).toBeUndefined();

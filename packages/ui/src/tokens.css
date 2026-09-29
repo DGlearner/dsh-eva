@@ -1,29 +1,29 @@
 :root {
   color-scheme: light;
-  --color-canvas: #f5f7f8;
+  --color-canvas: #eef3ee;
   --color-surface: #ffffff;
-  --color-surface-muted: #eef1f3;
-  --color-border: #d9dee2;
-  --color-border-strong: #b8c1c8;
-  --color-text: #172027;
-  --color-text-muted: #65717a;
-  --color-primary: #147d73;
-  --color-primary-hover: #0d675f;
-  --color-primary-soft: #e2f2ef;
-  --color-accent: #315d9e;
-  --color-accent-soft: #e8eef8;
-  --color-success: #2e7d4f;
-  --color-warning: #956515;
-  --color-danger: #b33a3a;
-  --color-danger-soft: #faeaea;
-  --color-focus: #347fba;
-  --shadow-popover: 0 10px 30px rgb(24 34 40 / 14%);
-  --radius-sm: 4px;
-  --radius-md: 7px;
+  --color-surface-muted: #f4f7f3;
+  --color-border: #d6ded4;
+  --color-border-strong: #b8c6b6;
+  --color-text: #19281d;
+  --color-text-muted: #68766c;
+  --color-primary: #2fac34;
+  --color-primary-hover: #238d29;
+  --color-primary-soft: #e4f4e3;
+  --color-accent: #b78912;
+  --color-accent-soft: #fff4c9;
+  --color-success: #287d35;
+  --color-warning: #9a6912;
+  --color-danger: #b5473c;
+  --color-danger-soft: #fae9e6;
+  --color-focus: #2b9432;
+  --shadow-popover: 0 14px 36px rgb(48 69 52 / 14%);
+  --radius-sm: 6px;
+  --radius-md: 8px;
   --font-sans: Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   --font-mono: 'SFMono-Regular', Consolas, monospace;
-  --sidebar-width: 224px;
-  --header-height: 56px;
+  --sidebar-width: 212px;
+  --header-height: 60px;
 }
 
 * {
@@ -38,6 +38,11 @@ body {
   font-size: 14px;
   line-height: 1.5;
   letter-spacing: 0;
+}
+
+::selection {
+  background: #cceacc;
+  color: var(--color-text);
 }
 
 .sr-only {

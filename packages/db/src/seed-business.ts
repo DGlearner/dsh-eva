@@ -114,6 +114,8 @@ export interface BusinessFixture {
     user_id: string;
     department_id: string;
     work_date: string;
+    scope: 'personal' | 'department' | 'company' | 'task';
+    task_id: string | null;
     content: JsonRecord;
     status: string;
     version: number;
@@ -341,9 +343,9 @@ async function seed(client: PoolClient, fixture: BusinessFixture): Promise<Busin
   for (const report of fixture.daily_reports) {
     await add(
       `INSERT INTO business.daily_reports
-       (id, tenant_id, user_id, department_id, work_date, content, status, published_at,
-        deleted_at, version, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,NULL,$9,$10,$10)
+       (id, tenant_id, user_id, department_id, work_date, scope, task_id, content, status,
+        published_at, deleted_at, version, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,NULL,$11,$12,$12)
        ON CONFLICT (id) DO NOTHING`,
       [
         report.id,
@@ -351,6 +353,8 @@ async function seed(client: PoolClient, fixture: BusinessFixture): Promise<Busin
         report.user_id,
         report.department_id,
         report.work_date,
+        report.scope,
+        report.task_id,
         JSON.stringify(report.content),
         report.status,
         report.published_at,

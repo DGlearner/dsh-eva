@@ -19,7 +19,7 @@ const managerRoutes = [
   ],
   ['/workbench/tasks?as=dev_manager', '任务看板'],
   ['/workbench/tasks/00000000-0000-4000-8000-000000004003?as=dev_manager', '实现日报编辑'],
-  ['/workbench/daily-reports?as=dev_a', '我的日报'],
+  ['/workbench/daily-reports?as=dev_a', '部门日报'],
   ['/workbench/daily-reports/department?as=dev_manager', '部门日报'],
 ] as const;
 
@@ -40,6 +40,48 @@ test('manager routes render fixture-backed content', async ({ page }) => {
     await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible();
     await expectNoPageOverflow(page);
   }
+});
+
+test('model settings discovers and displays every model from URL and key', async ({ page }) => {
+  await page.goto('/workbench/settings/model?as=dev_a');
+  await page.getByLabel('API Base URL').fill('https://api.example.test/v1');
+  await page.getByLabel(/API Key/u).fill('fixture-key-not-real');
+  await expect(page.getByLabel('模型名称')).toHaveCount(0);
+
+  await page.getByRole('button', { name: '测试连接' }).click();
+  await expect(page.getByText(/连接成功，发现 3 个模型/u)).toBeVisible();
+
+  await page.getByRole('button', { name: '保存配置' }).click();
+  await expect(page.getByRole('heading', { name: '已发现模型（3）' })).toBeVisible();
+  await expect(page.getByText(/deepseek-chat · 默认/u)).toBeVisible();
+  await expect(page.getByText('deepseek-reasoner', { exact: true })).toBeVisible();
+  await expect(page.getByText('deepseek-v3.2', { exact: true })).toBeVisible();
+  await expectNoPageOverflow(page);
+});
+
+test('daily report levels follow the current role and tasks open their own report', async ({
+  page,
+}) => {
+  await page.goto('/workbench/daily-reports?as=dev_a');
+  await expect(page.getByRole('button', { name: '部门日报', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '个人日报', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '公司日报', exact: true })).toHaveCount(0);
+
+  await page.goto('/workbench/daily-reports?as=dev_manager');
+  await expect(page.getByRole('button', { name: '个人日报', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '部门日报', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '公司日报', exact: true })).toHaveCount(0);
+
+  await page.goto('/workbench/daily-reports?as=admin');
+  await expect(page.getByRole('button', { name: '个人日报', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '部门日报', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '公司日报', exact: true })).toBeVisible();
+
+  await page.goto('/workbench/tasks/00000000-0000-4000-8000-000000004002?as=dev_a');
+  await page.getByRole('button', { name: '填写任务日报' }).click();
+  await expect(page).toHaveURL(/task_id=00000000-0000-4000-8000-000000004002/u);
+  await expect(page.getByRole('heading', { name: '任务日报', exact: true })).toBeVisible();
+  await expect(page.getByText(/实现任务列表/u).first()).toBeVisible();
 });
 
 test('requirement split polls and applies the returned operation', async ({ page }) => {
@@ -100,7 +142,7 @@ test('automatic review entry requires a submitted review task and manager role',
 test('daily rewrite polls and applies the returned operation', async ({ page }) => {
   await page.goto('/workbench/daily-reports?as=dev_a');
   await page.getByLabel('工作日').fill('2026-08-18');
-  await expect(page.getByLabel('今日完成')).toHaveValue('完成登录接口。');
+  await expect(page.getByLabel('日报正文')).toHaveValue(/完成登录接口。/);
   await page.getByRole('button', { name: 'AI 润色' }).click();
   await expect(page.getByText('正在生成改写预览，请勿重复提交。')).toBeVisible();
   await expect(page.getByText(/日报改写(已排队|运行中)/)).toBeVisible();
@@ -112,7 +154,7 @@ test('daily rewrite polls and applies the returned operation', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toHaveCount(0);
 
   await page.getByLabel('工作日').fill('2026-08-18');
-  await expect(page.getByLabel('今日完成')).toHaveValue('完成登录接口。');
+  await expect(page.getByLabel('日报正文')).toHaveValue(/完成登录接口。/);
   await page.getByRole('button', { name: 'AI 润色' }).click();
   await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toBeVisible();
   await expect(page.getByRole('button', { name: '保存草稿' })).toBeDisabled();
@@ -128,14 +170,14 @@ test('daily rewrite polls and applies the returned operation', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toBeVisible();
   await page.getByRole('button', { name: '应用改写' }).click();
   await expect(page.getByText('改写已应用为草稿。')).toBeVisible();
-  await expect(page.getByLabel('今日完成')).toHaveValue('完成登录接口及回归测试。');
+  await expect(page.getByLabel('日报正文')).toHaveValue(/完成登录接口及回归测试。/);
   await expectNoPageOverflow(page);
 });
 
 test('daily rewrite preview expires when the report revision changes', async ({ page }) => {
   await page.goto('/workbench/daily-reports?as=dev_a&mock=report-changed');
   await page.getByLabel('工作日').fill('2026-08-18');
-  await expect(page.getByLabel('今日完成')).toHaveValue('完成登录接口。');
+  await expect(page.getByLabel('日报正文')).toHaveValue(/完成登录接口。/);
   await page.getByRole('button', { name: 'AI 润色' }).click();
   await expect(page.getByText('日报内容已更新，旧改写预览已失效。')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toHaveCount(0);
@@ -147,7 +189,7 @@ test('daily rewrite preview expires when the report revision changes', async ({ 
 test('daily rewrite 412 refreshes the report and clears the stale preview', async ({ page }) => {
   await page.goto('/workbench/daily-reports?as=dev_a&mock=apply-conflict');
   await page.getByLabel('工作日').fill('2026-08-18');
-  await expect(page.getByLabel('今日完成')).toHaveValue('完成登录接口。');
+  await expect(page.getByLabel('日报正文')).toHaveValue(/完成登录接口。/);
   await page.getByRole('button', { name: 'AI 润色' }).click();
   await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toBeVisible();
 
@@ -180,7 +222,7 @@ test('automation failed and cancelled states stop with server messages', async (
 
   await page.goto('/workbench/daily-reports?as=dev_a&mock=cancelled');
   await page.getByLabel('工作日').fill('2026-08-18');
-  await expect(page.getByLabel('今日完成')).toHaveValue('完成登录接口。');
+  await expect(page.getByLabel('日报正文')).toHaveValue(/完成登录接口。/);
   await page.getByRole('button', { name: 'AI 润色' }).click();
   await expect(page.getByText('自动化操作已取消。')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'AI 改写预览' })).toHaveCount(0);
@@ -218,7 +260,6 @@ test('loading empty error forbidden and conflict states are visible', async ({ p
 
   await page.goto('/workbench/settings/model?as=dev_a&mock=conflict');
   await page.getByLabel('API Base URL').fill('https://api.example.invalid/v1');
-  await page.getByLabel('模型名称').fill('fixture-model');
   await page.getByRole('button', { name: '保存配置' }).click();
   await expect(page.getByText('内容已被其他操作更新，请刷新后重试。')).toBeVisible();
 });

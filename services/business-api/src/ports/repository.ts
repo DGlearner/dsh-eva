@@ -3,6 +3,7 @@ import type {
   AutomationOperation,
   DailyReport,
   DailyReportRevision,
+  DailyReportScope,
   Department,
   IdempotencyRecord,
   KnowledgeCategory,
@@ -64,7 +65,13 @@ export interface BusinessRepository {
   saveAutomationOperation(value: AutomationOperation, expectedVersion: number): Promise<void>;
 
   listDailyReports(tenantId: UUID): Promise<DailyReport[]>;
-  getDailyReport(tenantId: UUID, userId: UUID, workDate: string): Promise<DailyReport | null>;
+  getDailyReport(
+    tenantId: UUID,
+    userId: UUID,
+    workDate: string,
+    scope: DailyReportScope,
+    taskId: UUID | null,
+  ): Promise<DailyReport | null>;
   getDailyReportById(tenantId: UUID, reportId: UUID): Promise<DailyReport | null>;
   createDailyReport(value: DailyReport): Promise<void>;
   saveDailyReport(value: DailyReport, expectedVersion: number): Promise<void>;

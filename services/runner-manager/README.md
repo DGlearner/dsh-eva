@@ -13,5 +13,9 @@ RUNNER_IDENTITY_SECRET_BASE64=... \
 RUNNER_IMAGE=company-dsh-runner:wave1 \
 RUNNER_IMAGE_VERSION=99f6f02fecdb7dff40c3fbc9470f5907c29f74ca \
 RUNNER_DATA_ROOT=/absolute/path/company-dsh-users \
+COMPANY_AGENT_TOOL_GATEWAY_URL=http://control-plane:8080/internal/v1/agent-tools/query-company-system \
 node services/runner-manager/dist/main.js
 ```
+
+The Manager injects the fixed internal Agent Tool Gateway URL and the current Runner's derived
+identity key into each container. Neither value is accepted from model Tool arguments.

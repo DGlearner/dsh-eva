@@ -8,6 +8,7 @@ import type {
   AutomationOperation,
   DailyReport,
   DailyReportRevision,
+  DailyReportScope,
   Department,
   IdempotencyRecord,
   KnowledgeCategory,
@@ -408,11 +409,17 @@ export class FakeBusinessRepository implements BusinessRepository {
     tenantId: UUID,
     userId: UUID,
     workDate: string,
+    scope: DailyReportScope,
+    taskId: UUID | null,
   ): Promise<DailyReport | null> {
     this.assertTenant(tenantId);
     return clone(
       [...this.reports.values()].find(
-        (report) => report.user_id === userId && report.work_date === workDate,
+        (report) =>
+          report.user_id === userId &&
+          report.work_date === workDate &&
+          report.scope === scope &&
+          report.task_id === taskId,
       ) ?? null,
     );
   }
@@ -425,7 +432,13 @@ export class FakeBusinessRepository implements BusinessRepository {
   async createDailyReport(value: DailyReport): Promise<void> {
     this.maybeFail('createDailyReport');
     this.assertTenant(value.tenant_id);
-    const existing = await this.getDailyReport(value.tenant_id, value.user_id, value.work_date);
+    const existing = await this.getDailyReport(
+      value.tenant_id,
+      value.user_id,
+      value.work_date,
+      value.scope,
+      value.task_id,
+    );
     if (existing !== null) throw conflict('daily_report_exists', 'Daily report already exists.');
     this.reports.set(value.id, clone(value));
   }

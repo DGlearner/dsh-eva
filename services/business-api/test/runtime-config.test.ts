@@ -50,6 +50,22 @@ describe('Business runtime configuration', () => {
     ).toThrow(/rejects every fake/);
   });
 
+  it('accepts PostgreSQL with explicitly disabled production providers', () => {
+    expect(
+      loadBusinessRuntimeConfig({
+        ...integrationEnv,
+        NODE_ENV: 'production',
+        AUTOMATION_PROVIDER: 'disabled',
+        KNOWLEDGE_PROVIDER: 'disabled',
+      }),
+    ).toMatchObject({
+      nodeEnv: 'production',
+      repositoryMode: 'postgres',
+      automationMode: 'disabled',
+      knowledgeMode: 'disabled',
+    });
+  });
+
   it('rejects missing secrets, invalid providers, and reserved remote MCP', () => {
     expect(() =>
       loadBusinessRuntimeConfig({ ...integrationEnv, ACTOR_TOKEN_SECRET: undefined }),

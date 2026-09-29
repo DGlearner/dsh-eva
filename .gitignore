@@ -8,12 +8,14 @@ test-results/
 .env
 .env.*
 !.env.example
+!.env.production.example
 *.log
 .DS_Store
 .idea/
 .vscode/
 
 # Runtime data and credentials must never enter source control.
+.runtime/
 data/
 secrets/
 *.pem

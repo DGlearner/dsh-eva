@@ -97,6 +97,7 @@ CREATE TABLE platform.model_configs (
   user_id uuid NOT NULL UNIQUE REFERENCES platform.users(id) ON DELETE CASCADE,
   base_url text NOT NULL,
   model text NOT NULL,
+  models text[] NOT NULL CHECK (cardinality(models) > 0 AND model = ANY(models)),
   temperature numeric(3,2) NOT NULL DEFAULT 0.70 CHECK (temperature >= 0 AND temperature <= 2),
   max_output_tokens integer CHECK (max_output_tokens >= 1),
   api_key_secret_id uuid REFERENCES platform.secrets(id),
@@ -114,6 +115,7 @@ CREATE TABLE platform.model_config_stages (
   config_version integer NOT NULL CHECK (config_version >= 1),
   base_url text NOT NULL,
   model text NOT NULL,
+  models text[] NOT NULL CHECK (cardinality(models) > 0 AND model = ANY(models)),
   temperature numeric(3,2) NOT NULL CHECK (temperature >= 0 AND temperature <= 2),
   max_output_tokens integer CHECK (max_output_tokens >= 1),
   api_key_ciphertext bytea,
@@ -185,7 +187,8 @@ CREATE INDEX runner_instances_state_idx ON platform.runner_instances (state, upd
 CREATE TABLE platform.knowledge_provider_configs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL UNIQUE REFERENCES platform.tenants(id),
-  provider text NOT NULL DEFAULT 'fake' CHECK (provider IN ('fake', 'remote-mcp')),
+  provider text NOT NULL DEFAULT 'disabled'
+    CHECK (provider IN ('disabled', 'fake', 'remote-mcp')),
   remote_mcp_enabled boolean NOT NULL DEFAULT false,
   endpoint text,
   auth_secret_id uuid REFERENCES platform.secrets(id),

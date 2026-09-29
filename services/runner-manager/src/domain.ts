@@ -36,6 +36,7 @@ export type RunnerContainerSpec = {
   ingressNetworkName: string;
   egressNetworkName: string;
   identitySecretBase64: string;
+  agentToolGatewayUrl: string;
   memoryBytes: number;
   nanoCpus: number;
   pidsLimit: number;

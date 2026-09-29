@@ -25,6 +25,9 @@ const manager = new RunnerManager({
     imageVersion: required('RUNNER_IMAGE_VERSION'),
     dataRoot: required('RUNNER_DATA_ROOT'),
     runnerIdentityRootSecret: Buffer.from(required('RUNNER_IDENTITY_SECRET_BASE64'), 'base64'),
+    agentToolGatewayUrl:
+      process.env.COMPANY_AGENT_TOOL_GATEWAY_URL ??
+      'http://control-plane:8080/internal/v1/agent-tools/query-company-system',
     ingressNetworkName: process.env.RUNNER_INGRESS_NETWORK ?? 'company-runner',
     egressNetworkName: process.env.RUNNER_EGRESS_NETWORK ?? 'company-runner-egress',
     internalPort: numberEnv('RUNNER_INTERNAL_PORT', 3000),

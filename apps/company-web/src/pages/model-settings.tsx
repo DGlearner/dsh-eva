@@ -11,9 +11,6 @@ import styles from '../workbench.module.css';
 
 const schema = z.object({
   base_url: z.url('请输入有效的 API URL'),
-  model: z.string().trim().min(1, '请输入模型名称').max(200),
-  temperature: z.number().min(0).max(2),
-  max_output_tokens: z.union([z.literal(''), z.number().int().positive()]),
   api_key: z.string().optional(),
 });
 
@@ -28,9 +25,6 @@ export function ModelSettingsPage() {
     resolver: zodResolver(schema),
     defaultValues: {
       base_url: '',
-      model: '',
-      temperature: 0.7,
-      max_output_tokens: '',
       api_key: '',
     },
   });
@@ -39,9 +33,6 @@ export function ModelSettingsPage() {
     if (!query.data) return;
     form.reset({
       base_url: query.data.base_url,
-      model: query.data.model,
-      temperature: query.data.temperature,
-      max_output_tokens: query.data.max_output_tokens ?? '',
       api_key: '',
     });
   }, [form, query.data]);
@@ -50,9 +41,6 @@ export function ModelSettingsPage() {
     mutationFn: (values: FormValues) =>
       api.updateModelConfig({
         base_url: values.base_url,
-        model: values.model,
-        temperature: values.temperature,
-        max_output_tokens: values.max_output_tokens === '' ? null : values.max_output_tokens,
         api_key: values.api_key || undefined,
         expected_version: query.data?.version ?? 0,
       }),
@@ -60,12 +48,9 @@ export function ModelSettingsPage() {
       queryClient.setQueryData(['model-config'], data);
       form.reset({
         base_url: data.base_url,
-        model: data.model,
-        temperature: data.temperature,
-        max_output_tokens: data.max_output_tokens ?? '',
         api_key: '',
       });
-      setNotice('模型配置已保存。');
+      setNotice(`模型配置已保存，已发现 ${data.model_count} 个可用模型。`);
     },
     onError: (error) => {
       if (error instanceof ApiProblem && error.status === 412) void query.refetch();
@@ -75,12 +60,13 @@ export function ModelSettingsPage() {
     mutationFn: (values: FormValues) =>
       api.testModelConfig({
         base_url: values.base_url,
-        model: values.model,
         api_key: values.api_key || null,
       }),
     onSuccess: (result) =>
       setNotice(
-        result.ok ? `连接成功，延迟 ${result.latency_ms} ms。` : `连接失败：${result.error_code}`,
+        result.ok
+          ? `连接成功，发现 ${result.model_count} 个模型，延迟 ${result.latency_ms} ms。`
+          : `连接失败：${result.error_code}`,
       ),
   });
 
@@ -106,7 +92,7 @@ export function ModelSettingsPage() {
     <div className={styles.page}>
       <PageHeader
         title="模型设置"
-        description="配置当前账号使用的 OpenAI-compatible 模型。API Key 保存后不会再次完整显示。"
+        description="填写 OpenAI-compatible API 地址和密钥，系统会自动获取全部可用模型。"
         actions={
           query.data?.has_api_key ? (
             <Badge tone="success">密钥已配置 {query.data.api_key_hint}</Badge>
@@ -132,13 +118,6 @@ export function ModelSettingsPage() {
                 />
               </Field>
             </div>
-            <Field label="模型名称" error={form.formState.errors.model?.message}>
-              <Input
-                placeholder="model-name"
-                disabled={save.isPending || test.isPending}
-                {...form.register('model')}
-              />
-            </Field>
             <Field
               label="API Key"
               hint={query.data?.has_api_key ? '留空将保留当前密钥' : '仅写入，不回显'}
@@ -148,27 +127,6 @@ export function ModelSettingsPage() {
                 autoComplete="new-password"
                 disabled={save.isPending || test.isPending}
                 {...form.register('api_key')}
-              />
-            </Field>
-            <Field label="Temperature" error={form.formState.errors.temperature?.message}>
-              <Input
-                type="number"
-                min="0"
-                max="2"
-                step="0.1"
-                disabled={save.isPending || test.isPending}
-                {...form.register('temperature', { valueAsNumber: true })}
-              />
-            </Field>
-            <Field label="最大输出 Token" error={form.formState.errors.max_output_tokens?.message}>
-              <Input
-                type="number"
-                min="1"
-                placeholder="使用模型默认值"
-                disabled={save.isPending || test.isPending}
-                {...form.register('max_output_tokens', {
-                  setValueAs: (value) => (value === '' ? '' : Number(value)),
-                })}
               />
             </Field>
           </div>
@@ -194,6 +152,18 @@ export function ModelSettingsPage() {
           </div>
         </form>
       </Panel>
+      {query.data && (
+        <Panel title={`已发现模型（${query.data.model_count}）`}>
+          <div className={styles.modelCatalog}>
+            {query.data.models.map((model) => (
+              <Badge key={model} tone={model === query.data.model ? 'success' : 'neutral'}>
+                {model}
+                {model === query.data.model ? ' · 默认' : ''}
+              </Badge>
+            ))}
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }

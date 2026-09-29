@@ -218,7 +218,7 @@ export interface AutomationOperation {
   actor_user_id: UUID;
   resource_type: 'requirement' | 'task' | 'daily_report';
   resource_id: UUID;
-  provider: 'fake' | 'dsh';
+  provider: 'fake' | 'model' | 'dsh';
   provider_run_id: UUID | null;
   status: AutomationRunStatus;
   result: AutomationResult | null;
@@ -231,6 +231,7 @@ export interface AutomationOperation {
 }
 
 export type DailyReportStatus = 'draft' | 'published' | 'deleted';
+export type DailyReportScope = 'personal' | 'department' | 'company' | 'task';
 
 export interface DailyReport {
   id: UUID;
@@ -238,6 +239,8 @@ export interface DailyReport {
   user_id: UUID;
   department_id: UUID;
   work_date: DateString;
+  scope: DailyReportScope;
+  task_id: UUID | null;
   content: DailyReportContent;
   status: DailyReportStatus;
   version: number;

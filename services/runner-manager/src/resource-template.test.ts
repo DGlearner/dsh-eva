@@ -53,5 +53,6 @@ function createTemplate(dataRoot: string) {
     imageVersion: 'test',
     dataRoot,
     runnerIdentityRootSecret: Buffer.alloc(32, 8),
+    agentToolGatewayUrl: 'http://control-plane:8080/internal/v1/agent-tools/query-company-system',
   });
 }

@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool, type PoolClient } from 'pg';
 
@@ -10,6 +10,7 @@ import type {
   AutomationOperation,
   DailyReport,
   DailyReportRevision,
+  DailyReportScope,
   Department,
   IdempotencyRecord,
   KnowledgeCategory,
@@ -506,6 +507,8 @@ export class PostgresBusinessRepository implements BusinessRepository {
     tenantId: UUID,
     userId: UUID,
     workDate: string,
+    scope: DailyReportScope,
+    taskId: UUID | null,
   ): Promise<DailyReport | null> {
     const [row] = await this.db
       .select()
@@ -515,6 +518,10 @@ export class PostgresBusinessRepository implements BusinessRepository {
           eq(schema.dailyReports.tenantId, tenantId),
           eq(schema.dailyReports.userId, userId),
           eq(schema.dailyReports.workDate, workDate),
+          eq(schema.dailyReports.scope, scope),
+          taskId === null
+            ? isNull(schema.dailyReports.taskId)
+            : eq(schema.dailyReports.taskId, taskId),
         ),
       )
       .limit(1);
@@ -539,6 +546,8 @@ export class PostgresBusinessRepository implements BusinessRepository {
       .update(schema.dailyReports)
       .set({
         departmentId: value.department_id,
+        scope: value.scope,
+        taskId: value.task_id,
         content: value.content,
         status: value.status,
         publishedAt: value.published_at,
@@ -963,6 +972,8 @@ function reportInsert(value: DailyReport) {
     userId: value.user_id,
     departmentId: value.department_id,
     workDate: value.work_date,
+    scope: value.scope,
+    taskId: value.task_id,
     content: value.content,
     status: value.status,
     publishedAt: value.published_at,
@@ -980,6 +991,8 @@ function mapReport(row: typeof schema.dailyReports.$inferSelect): DailyReport {
     user_id: row.userId,
     department_id: row.departmentId,
     work_date: row.workDate,
+    scope: row.scope as DailyReport['scope'],
+    task_id: row.taskId,
     content: row.content,
     status: row.status as DailyReport['status'],
     version: row.version,

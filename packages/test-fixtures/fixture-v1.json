@@ -71,6 +71,12 @@
   "department_members": [
     {
       "department_id": "00000000-0000-4000-8000-000000000101",
+      "user_id": "00000000-0000-4000-8000-000000001001",
+      "org_role": "manager",
+      "version": 1
+    },
+    {
+      "department_id": "00000000-0000-4000-8000-000000000101",
       "user_id": "00000000-0000-4000-8000-000000001002",
       "org_role": "manager",
       "version": 1
@@ -570,6 +576,38 @@
       "latest_review_result": null,
       "version": 2,
       "updated_at": "2026-08-18T04:30:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004007",
+      "requirement_id": "00000000-0000-4000-8000-000000003002",
+      "parent_task_id": null,
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "assignee_user_id": "00000000-0000-4000-8000-000000001001",
+      "title": "上线前业务链路验收",
+      "description": "逐项验收任务、日报和 AI 查询链路。",
+      "acceptance_criteria": ["任务日报可追溯", "普通日报权限正确", "Agent 可查询业务数据"],
+      "status": "in_progress",
+      "position": 7,
+      "due_at": "2026-08-28T10:00:00Z",
+      "latest_review_result": null,
+      "version": 2,
+      "updated_at": "2026-08-24T02:30:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004008",
+      "requirement_id": "00000000-0000-4000-8000-000000003002",
+      "parent_task_id": null,
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "assignee_user_id": "00000000-0000-4000-8000-000000001002",
+      "title": "整理部门上线清单",
+      "description": "汇总研发部上线前必须完成的检查项。",
+      "acceptance_criteria": ["负责人明确", "完成时间明确"],
+      "status": "todo",
+      "position": 8,
+      "due_at": "2026-08-27T10:00:00Z",
+      "latest_review_result": null,
+      "version": 1,
+      "updated_at": "2026-08-24T02:20:00Z"
     }
   ],
   "task_dependencies": [
@@ -765,6 +803,8 @@
       "user_id": "00000000-0000-4000-8000-000000001003",
       "department_id": "00000000-0000-4000-8000-000000000101",
       "work_date": "2026-08-18",
+      "scope": "department",
+      "task_id": null,
       "content": {
         "completed_today": "完成登录接口。",
         "next_plan": "开发任务列表。",
@@ -782,6 +822,8 @@
       "user_id": "00000000-0000-4000-8000-000000001003",
       "department_id": "00000000-0000-4000-8000-000000000101",
       "work_date": "2026-08-17",
+      "scope": "department",
+      "task_id": null,
       "content": {
         "completed_today": "整理接口设计。",
         "next_plan": "实现登录。",
@@ -799,6 +841,8 @@
       "user_id": "00000000-0000-4000-8000-000000001002",
       "department_id": "00000000-0000-4000-8000-000000000101",
       "work_date": "2026-08-18",
+      "scope": "department",
+      "task_id": null,
       "content": {
         "completed_today": "评审三条开发链路。",
         "next_plan": "验收任务看板。",
@@ -816,6 +860,8 @@
       "user_id": "00000000-0000-4000-8000-000000001006",
       "department_id": "00000000-0000-4000-8000-000000000102",
       "work_date": "2026-08-18",
+      "scope": "department",
+      "task_id": null,
       "content": {
         "completed_today": "整理需求文案。",
         "next_plan": "补充验收项。",
@@ -827,6 +873,177 @@
       "version": 1,
       "published_at": "2026-08-18T08:40:00Z",
       "updated_at": "2026-08-18T08:40:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007005",
+      "user_id": "00000000-0000-4000-8000-000000001001",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-24",
+      "scope": "personal",
+      "task_id": null,
+      "content": {
+        "completed_today": "",
+        "next_plan": "",
+        "blockers": "",
+        "other": "",
+        "free_text": "上午确认部署资源和 Runner 隔离方案，下午完成日报权限模型评审。下一步安排真实用户验收。"
+      },
+      "status": "published",
+      "version": 2,
+      "published_at": "2026-08-24T03:10:00Z",
+      "updated_at": "2026-08-24T03:10:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007006",
+      "user_id": "00000000-0000-4000-8000-000000001001",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-24",
+      "scope": "department",
+      "task_id": null,
+      "content": {
+        "completed_today": "",
+        "next_plan": "",
+        "blockers": "",
+        "other": "",
+        "free_text": "研发部已完成任务看板、日报和 DSH 对话主链路联调。当前重点是补齐权限测试与部署备份演练。"
+      },
+      "status": "published",
+      "version": 2,
+      "published_at": "2026-08-24T03:15:00Z",
+      "updated_at": "2026-08-24T03:15:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007007",
+      "user_id": "00000000-0000-4000-8000-000000001001",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-24",
+      "scope": "company",
+      "task_id": null,
+      "content": {
+        "completed_today": "",
+        "next_plan": "",
+        "blockers": "",
+        "other": "",
+        "free_text": "公司协作平台已进入内部验证阶段，任务、知识和日报可统一由 AI 查询。下一阶段完成真实知识库接入和生产备份验证。"
+      },
+      "status": "draft",
+      "version": 1,
+      "published_at": null,
+      "updated_at": "2026-08-24T03:20:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007008",
+      "user_id": "00000000-0000-4000-8000-000000001001",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-24",
+      "scope": "task",
+      "task_id": "00000000-0000-4000-8000-000000004007",
+      "content": {
+        "completed_today": "",
+        "next_plan": "",
+        "blockers": "",
+        "other": "",
+        "free_text": "已验收模型配置、Runner 重建及系统查询链路；待补充普通日报三层权限的回归结果。"
+      },
+      "status": "published",
+      "version": 2,
+      "published_at": "2026-08-24T03:25:00Z",
+      "updated_at": "2026-08-24T03:25:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007009",
+      "user_id": "00000000-0000-4000-8000-000000001002",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-23",
+      "scope": "personal",
+      "task_id": null,
+      "content": {
+        "completed_today": "",
+        "next_plan": "",
+        "blockers": "",
+        "other": "",
+        "free_text": "完成研发任务排期和审核规则复核，明日跟进未完成任务的风险项。"
+      },
+      "status": "published",
+      "version": 2,
+      "published_at": "2026-08-23T09:00:00Z",
+      "updated_at": "2026-08-23T09:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007010",
+      "user_id": "00000000-0000-4000-8000-000000001002",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-23",
+      "scope": "department",
+      "task_id": null,
+      "content": {
+        "completed_today": "",
+        "next_plan": "",
+        "blockers": "",
+        "other": "",
+        "free_text": "研发部今日完成 3 项联调，2 项进入审核；分页边界问题需要明日上午优先处理。"
+      },
+      "status": "published",
+      "version": 2,
+      "published_at": "2026-08-23T09:10:00Z",
+      "updated_at": "2026-08-23T09:10:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007011",
+      "user_id": "00000000-0000-4000-8000-000000001003",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-23",
+      "scope": "department",
+      "task_id": null,
+      "content": {
+        "completed_today": "",
+        "next_plan": "",
+        "blockers": "",
+        "other": "",
+        "free_text": "完成任务列表筛选与空状态检查，正在处理分页游标重复问题。"
+      },
+      "status": "published",
+      "version": 2,
+      "published_at": "2026-08-23T08:40:00Z",
+      "updated_at": "2026-08-23T08:40:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007012",
+      "user_id": "00000000-0000-4000-8000-000000001003",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-23",
+      "scope": "task",
+      "task_id": "00000000-0000-4000-8000-000000004002",
+      "content": {
+        "completed_today": "",
+        "next_plan": "",
+        "blockers": "",
+        "other": "",
+        "free_text": "任务看板四个快速视图已完成，负责人筛选仍需替换为姓名展示。"
+      },
+      "status": "published",
+      "version": 2,
+      "published_at": "2026-08-23T08:45:00Z",
+      "updated_at": "2026-08-23T08:45:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000007013",
+      "user_id": "00000000-0000-4000-8000-000000001004",
+      "department_id": "00000000-0000-4000-8000-000000000101",
+      "work_date": "2026-08-23",
+      "scope": "department",
+      "task_id": null,
+      "content": {
+        "completed_today": "",
+        "next_plan": "",
+        "blockers": "",
+        "other": "",
+        "free_text": "日报编辑页面已进入审核，补充了移动端布局和删除后的恢复验证。"
+      },
+      "status": "published",
+      "version": 2,
+      "published_at": "2026-08-23T08:50:00Z",
+      "updated_at": "2026-08-23T08:50:00Z"
     }
   ],
   "daily_report_revisions": [

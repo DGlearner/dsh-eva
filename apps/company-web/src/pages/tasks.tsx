@@ -2,16 +2,24 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  CalendarDays,
   CheckCircle2,
+  ChevronRight,
   CircleDashed,
+  ClipboardCheck,
+  Clock3,
+  ListTodo,
+  NotebookPen,
   Play,
   RotateCcw,
   Send,
+  ShieldAlert,
+  UserRound,
   XCircle,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useParams } from 'react-router';
+import { Link, useLocation, useParams } from 'react-router';
 import { z } from 'zod';
 import { Badge, Button, Field, InlineAlert, Textarea } from '@company/ui';
 import { api, ApiProblem, problemMessage, type Schema } from '../api';
@@ -52,6 +60,23 @@ const views = [
   ['completed', '已完成'],
 ] as const;
 
+const boardGroups: Array<{
+  key: string;
+  label: string;
+  statuses: Schema<'TaskStatus'>[];
+}> = [
+  { key: 'backlog', label: '待开始', statuses: ['planning', 'todo'] },
+  { key: 'active', label: '进行中', statuses: ['in_progress'] },
+  { key: 'review', label: '待审核', statuses: ['review'] },
+  { key: 'closed', label: '已结束', statuses: ['done', 'failed', 'cancelled'] },
+];
+
+const reviewResultLabel: Record<Schema<'ReviewResult'>, string> = {
+  pass: '审核通过',
+  fail: '审核未通过',
+  needs_review: '需要复核',
+};
+
 function reviewTone(value: Schema<'ReviewResult'> | null) {
   if (value === 'pass') return 'success' as const;
   if (value === 'fail') return 'error' as const;
@@ -59,18 +84,30 @@ function reviewTone(value: Schema<'ReviewResult'> | null) {
   return 'neutral' as const;
 }
 
+function taskStatusTone(value: Schema<'TaskStatus'>) {
+  if (value === 'done') return 'success' as const;
+  if (value === 'failed' || value === 'cancelled') return 'error' as const;
+  if (value === 'review' || value === 'planning') return 'warning' as const;
+  if (value === 'in_progress') return 'info' as const;
+  return 'neutral' as const;
+}
+
 export function TasksBoardPage() {
+  const meQuery = useMe();
   const [view, setView] = useState<(typeof views)[number][0]>('incomplete');
   const [assignee, setAssignee] = useState('');
   const [requirement, setRequirement] = useState('');
   const query = useQuery({
-    queryKey: ['tasks', view, assignee, requirement],
+    queryKey: ['tasks', view, assignee, requirement, meQuery.data?.user.id],
     queryFn: () =>
       api.tasks({
         view,
-        assignee_user_id: assignee || undefined,
+        assignee_user_id:
+          assignee ||
+          (view === 'incomplete' || view === 'completed' ? meQuery.data?.user.id : undefined),
         requirement_id: requirement || undefined,
       }),
+    enabled: Boolean(meQuery.data?.user.id),
     retry: false,
   });
   const requirements = useQuery({
@@ -105,20 +142,40 @@ export function TasksBoardPage() {
       <PageHeader title="任务看板" description="按固定状态跟踪执行、提交与审核进展。" />
       <div className={styles.stats}>
         <div className={styles.stat}>
-          <strong>{total}</strong>
-          <span>当前任务</span>
+          <span className={styles.statIcon}>
+            <ListTodo aria-hidden="true" />
+          </span>
+          <div>
+            <strong>{total}</strong>
+            <span>当前任务</span>
+          </div>
         </div>
         <div className={styles.stat}>
-          <strong>{grouped.in_progress.length}</strong>
-          <span>进行中</span>
+          <span className={styles.statIcon}>
+            <Clock3 aria-hidden="true" />
+          </span>
+          <div>
+            <strong>{grouped.in_progress.length}</strong>
+            <span>进行中</span>
+          </div>
         </div>
         <div className={styles.stat}>
-          <strong>{grouped.review.length}</strong>
-          <span>待审核</span>
+          <span className={styles.statIcon}>
+            <ClipboardCheck aria-hidden="true" />
+          </span>
+          <div>
+            <strong>{grouped.review.length}</strong>
+            <span>待审核</span>
+          </div>
         </div>
         <div className={styles.stat}>
-          <strong>{grouped.failed.length}</strong>
-          <span>需处理失败</span>
+          <span className={`${styles.statIcon} ${styles.statIconWarning}`}>
+            <ShieldAlert aria-hidden="true" />
+          </span>
+          <div>
+            <strong>{grouped.failed.length}</strong>
+            <span>需处理失败</span>
+          </div>
         </div>
       </div>
       <div className={styles.toolbar}>
@@ -170,47 +227,63 @@ export function TasksBoardPage() {
         <EmptyState title="这个视图没有任务" description="切换快速视图或清除筛选条件。" />
       ) : (
         <section className={styles.board} aria-label="任务状态看板">
-          {boardStatuses.map((status) => (
-            <div className={styles.boardColumn} key={status}>
-              <div className={styles.boardColumnHeader}>
-                <span>{statusLabel[status]}</span>
-                <Badge>{grouped[status].length}</Badge>
-              </div>
-              <div className={styles.taskList}>
-                {grouped[status].map((task) => {
-                  const requirementItem = requirements.data?.items.find(
-                    (item) => item.id === task.requirement_id,
-                  );
-                  return (
-                    <Link
-                      className={styles.taskCard}
-                      to={`/workbench/tasks/${task.id}`}
-                      key={task.id}
-                    >
-                      <span className={styles.taskCardTitle}>{task.title}</span>
-                      <span className={styles.muted}>
-                        {requirementItem?.title ?? task.requirement_id}
-                      </span>
-                      <span className={styles.taskMeta}>
-                        <span>
-                          {task.assignee_user_id
-                            ? `成员 ${task.assignee_user_id.slice(-4)}`
-                            : '未指派'}
+          {boardGroups.map((group) => {
+            const tasks = group.statuses.flatMap((status) => grouped[status]);
+            return (
+              <div className={styles.boardColumn} data-phase={group.key} key={group.key}>
+                <div className={styles.boardColumnHeader}>
+                  <div>
+                    <strong>{group.label}</strong>
+                    <span>{group.statuses.map((status) => statusLabel[status]).join(' · ')}</span>
+                  </div>
+                  <Badge>{tasks.length}</Badge>
+                </div>
+                <div className={styles.taskList}>
+                  {tasks.map((task) => {
+                    const requirementItem = requirements.data?.items.find(
+                      (item) => item.id === task.requirement_id,
+                    );
+                    return (
+                      <Link
+                        className={styles.taskCard}
+                        to={`/workbench/tasks/${task.id}`}
+                        key={task.id}
+                      >
+                        <span className={styles.taskCardTop}>
+                          <Badge tone={taskStatusTone(task.status)}>
+                            {statusLabel[task.status]}
+                          </Badge>
+                          {task.latest_review_result && (
+                            <Badge tone={reviewTone(task.latest_review_result)}>
+                              {reviewResultLabel[task.latest_review_result]}
+                            </Badge>
+                          )}
                         </span>
-                        <span>{task.due_at ? formatDateTime(task.due_at) : '无截止时间'}</span>
-                      </span>
-                      {task.latest_review_result && (
-                        <Badge tone={reviewTone(task.latest_review_result)}>
-                          {task.latest_review_result}
-                        </Badge>
-                      )}
-                    </Link>
-                  );
-                })}
-                {!grouped[status].length && <span className={styles.muted}>暂无任务</span>}
+                        <span className={styles.taskCardTitle}>{task.title}</span>
+                        <span className={styles.taskRequirement}>
+                          {requirementItem?.title ?? task.requirement_id}
+                        </span>
+                        <span className={styles.taskCardFooter}>
+                          <span className={styles.taskMeta}>
+                            <UserRound aria-hidden="true" />
+                            {task.assignee_user_id
+                              ? `成员 ${task.assignee_user_id.slice(-4)}`
+                              : '未指派'}
+                          </span>
+                          <span>
+                            <CalendarDays aria-hidden="true" />
+                            {task.due_at ? formatDateTime(task.due_at) : '暂无截止时间'}
+                          </span>
+                          <ChevronRight className={styles.taskArrow} aria-hidden="true" />
+                        </span>
+                      </Link>
+                    );
+                  })}
+                  {!tasks.length && <span className={styles.boardEmpty}>暂无任务</span>}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
       )}
     </div>
@@ -225,6 +298,7 @@ type SubmissionValues = z.infer<typeof submissionSchema>;
 
 export function TaskDetailPage() {
   const { id = '' } = useParams();
+  const location = useLocation();
   const meQuery = useMe();
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string | null>(null);
@@ -312,6 +386,8 @@ export function TaskDetailPage() {
   const canRunReview =
     task.status === 'review' && task.submissions.length > 0 && Boolean(isManager);
   const actionError = transition.error ?? submit.error ?? decision.error;
+  const reportSearch = new URLSearchParams(location.search);
+  reportSearch.set('task_id', task.id);
 
   return (
     <div className={styles.page}>
@@ -323,6 +399,13 @@ export function TaskDetailPage() {
             <Link to="/workbench/tasks">
               <Button icon={<ArrowLeft />}>返回看板</Button>
             </Link>
+            {isAssignee && task.status !== 'done' && task.status !== 'cancelled' && (
+              <Link to={`/workbench/daily-reports?${reportSearch.toString()}`}>
+                <Button variant="primary" icon={<NotebookPen />}>
+                  填写任务日报
+                </Button>
+              </Link>
+            )}
             <Badge>{statusLabel[task.status]}</Badge>
             {task.latest_review_result && (
               <Badge tone={reviewTone(task.latest_review_result)}>

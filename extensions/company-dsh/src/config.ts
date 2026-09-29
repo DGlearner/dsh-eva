@@ -6,6 +6,13 @@ export const KNOWLEDGE_TOOL_NAMES = [
 
 export type KnowledgeProviderConfig =
   | {
+      provider: 'disabled';
+      remoteMcpEnabled?: false;
+      mcpUrl?: never;
+      authSecretRef?: never;
+      allowedTools?: never;
+    }
+  | {
       provider: 'fake';
       remoteMcpEnabled?: false;
       mcpUrl?: never;
@@ -24,6 +31,7 @@ export function validateKnowledgeProviderConfig(
   config: KnowledgeProviderConfig,
   options: { production?: boolean } = {},
 ): void {
+  if (config.provider === 'disabled') return;
   const allowedTools = config.allowedTools ?? KNOWLEDGE_TOOL_NAMES;
   if (
     allowedTools.length === 0 ||

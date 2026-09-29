@@ -52,21 +52,8 @@ index db66c80..e41f75f 100644
    plugins: [rejectStandaloneServe(), react()],
    build: {
      sourcemap: true,
-diff --git a/packages/client/connection/src/api-path.ts b/packages/client/connection/src/api-path.ts
-index 9c70bfb..f3a113b 100644
---- a/packages/client/connection/src/api-path.ts
-+++ b/packages/client/connection/src/api-path.ts
-@@ -5,7 +5,7 @@
-  */
-
- /** Route prefix owning every api request (`/api` and `/api/<anything>`). */
--export const API_PATH = '/api'
-+export const API_PATH = '/chat/api'
-
- /** Browser mux-frame WebSocket pathname. */
- export const MUX_EVENTS_PATH = `${API_PATH}/events.mux`
 diff --git a/packages/client/connection/src/index.ts b/packages/client/connection/src/index.ts
-index 3508491..87f015d 100644
+index 3508491..dec836b 100644
 --- a/packages/client/connection/src/index.ts
 +++ b/packages/client/connection/src/index.ts
 @@ -9,6 +9,7 @@ import { API_PATH, HOST_EVENTS_PATH, MUX_EVENTS_PATH } from './api-path.ts'
@@ -85,18 +72,17 @@ index 3508491..87f015d 100644
    if (ctx.get('apiProxy') !== undefined) assertImageBodyCapacity(ctx, maxRequestBodyBytes)
    const connection = new HostConnectionService(ctx, trustedHosts)
    const fetchHandler = connection.createSharedFetchHandler(API_PATH, {
-@@ -155,7 +157,9 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
+@@ -143,7 +145,8 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
+         : undefined
+       if (method !== undefined
+         && PRIVILEGED_METHODS.has(method)
+-        && !isTrustedApiRequest(request, [])) {
++        && !isTrustedApiRequest(request, [])
++        && !verifyRunnerIdentity(request)) {
+         return new Response('forbidden', { status: 403 })
        }
-       const apiProxy = ctx.get('apiProxy')
-       if (apiProxy === undefined) return new Response('not found', { status: 404 })
--      return toFetchHandler(apiProxy).fetch(request)
-+      const apiUrl = new URL(request.url)
-+      apiUrl.pathname = `/api${pathname.slice(API_PATH.length)}`
-+      return toFetchHandler(apiProxy).fetch(new Request(apiUrl, request))
-     },
-   })
-   const route: WebRoute = {
-@@ -167,6 +171,11 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
+       if (request.method === 'GET' && (pathname === MUX_EVENTS_PATH || pathname === HOST_EVENTS_PATH)) {
+@@ -167,6 +169,11 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
          res.end('forbidden')
          return
        }
@@ -108,7 +94,7 @@ index 3508491..87f015d 100644
        await bridge(req, res, fetchHandler, maxRequestBodyBytes)
      },
    }
-@@ -185,6 +194,10 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
+@@ -185,6 +192,10 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
              rejectWebSocketUpgrade(socket)
              return
            }
@@ -226,18 +212,6 @@ diff --git a/packages/client/connection/tsconfig.host.json b/packages/client/con
      "src/websocket-downlink.ts"
    ],
    "references": [
-diff --git a/packages/client/connection/src/rpc-host.ts b/packages/client/connection/src/rpc-host.ts
-index 5fac774..8ef4e8c 100644
---- a/packages/client/connection/src/rpc-host.ts
-+++ b/packages/client/connection/src/rpc-host.ts
-@@ -69,6 +69,6 @@ export class HostConnectionService extends Service implements HostConnectionHand
-    */
-   createSharedFetchHandler(
--    channel: '/api',
-+    channel: typeof API_PATH,
-     fallback: FetchHandler,
-   ): FetchHandler {
-     return {
 diff --git a/packages/client/modules/src/index.ts b/packages/client/modules/src/index.ts
 --- a/packages/client/modules/src/index.ts
 +++ b/packages/client/modules/src/index.ts

@@ -759,6 +759,12 @@ paths:
         - name: status
           in: query
           schema: { $ref: '#/components/schemas/DailyReportStatus' }
+        - name: scope
+          in: query
+          schema: { $ref: '#/components/schemas/DailyReportScope' }
+        - name: task_id
+          in: query
+          schema: { $ref: '#/components/schemas/Uuid' }
       responses:
         '200':
           description: Current user's reports
@@ -767,7 +773,10 @@ paths:
               schema: { $ref: '#/components/schemas/DailyReportPage' }
         default: { $ref: '#/components/responses/Problem' }
   /daily-reports/{work_date}:
-    parameters: [{ $ref: '#/components/parameters/WorkDate' }]
+    parameters:
+      - { $ref: '#/components/parameters/WorkDate' }
+      - { $ref: '#/components/parameters/DailyReportScope' }
+      - { $ref: '#/components/parameters/DailyReportTaskId' }
     get:
       tags: [DailyReports]
       operationId: getDailyReport
@@ -812,6 +821,8 @@ paths:
       operationId: publishDailyReport
       parameters:
         - { $ref: '#/components/parameters/WorkDate' }
+        - { $ref: '#/components/parameters/DailyReportScope' }
+        - { $ref: '#/components/parameters/DailyReportTaskId' }
         - { $ref: '#/components/parameters/CsrfToken' }
         - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
@@ -832,6 +843,8 @@ paths:
       operationId: startDailyReportRewrite
       parameters:
         - { $ref: '#/components/parameters/WorkDate' }
+        - { $ref: '#/components/parameters/DailyReportScope' }
+        - { $ref: '#/components/parameters/DailyReportTaskId' }
         - { $ref: '#/components/parameters/CsrfToken' }
         - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
@@ -852,6 +865,8 @@ paths:
       operationId: applyDailyReportRewrite
       parameters:
         - { $ref: '#/components/parameters/WorkDate' }
+        - { $ref: '#/components/parameters/DailyReportScope' }
+        - { $ref: '#/components/parameters/DailyReportTaskId' }
         - { $ref: '#/components/parameters/CsrfToken' }
         - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
@@ -959,6 +974,14 @@ components:
         required: true,
         schema: { $ref: '#/components/schemas/DateString' },
       }
+    DailyReportScope:
+      {
+        name: scope,
+        in: query,
+        required: true,
+        schema: { $ref: '#/components/schemas/DailyReportScope' },
+      }
+    DailyReportTaskId: { name: task_id, in: query, schema: { $ref: '#/components/schemas/Uuid' } }
     KnowledgeScope:
       {
         name: scope,
@@ -996,6 +1019,7 @@ components:
     ReviewResult: { type: string, enum: [pass, fail, needs_review] }
     AutomationRunStatus: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
     DailyReportStatus: { type: string, enum: [draft, published, deleted] }
+    DailyReportScope: { type: string, enum: [personal, department, company, task] }
     ProblemDetails:
       type: object
       additionalProperties: false
@@ -1081,6 +1105,8 @@ components:
         [
           base_url,
           model,
+          models,
+          model_count,
           temperature,
           max_output_tokens,
           has_api_key,
@@ -1090,7 +1116,19 @@ components:
         ]
       properties:
         base_url: { type: string, format: uri }
-        model: { type: string, minLength: 1, maxLength: 200 }
+        model:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 200,
+            description: Automatically selected default model,
+          }
+        models:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 200 }
+        model_count: { type: integer, minimum: 1 }
         temperature: { type: number, minimum: 0, maximum: 2 }
         max_output_tokens: { type: [integer, 'null'], minimum: 1 }
         has_api_key: { type: boolean }
@@ -1100,29 +1138,30 @@ components:
     UpdateModelConfigRequest:
       type: object
       additionalProperties: false
-      required: [base_url, model, expected_version]
+      required: [base_url, expected_version]
       properties:
         base_url: { type: string, format: uri }
-        model: { type: string, minLength: 1, maxLength: 200 }
-        temperature: { type: number, minimum: 0, maximum: 2, default: 0.7 }
-        max_output_tokens: { type: [integer, 'null'], minimum: 1 }
         api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
         expected_version: { type: integer, minimum: 0 }
     TestModelConfigRequest:
       type: object
       additionalProperties: false
-      required: [base_url, model]
+      required: [base_url]
       properties:
         base_url: { type: string, format: uri }
-        model: { type: string }
         api_key: { type: [string, 'null'], writeOnly: true }
     ModelConfigTestResult:
       type: object
-      required: [ok, latency_ms, error_code]
+      required: [ok, latency_ms, error_code, models, model_count]
       properties:
         ok: { type: boolean }
         latency_ms: { type: integer, minimum: 0 }
         error_code: { type: [string, 'null'] }
+        models:
+          type: array
+          uniqueItems: true
+          items: { type: string }
+        model_count: { type: integer, minimum: 0 }
     VersionedCommand:
       type: object
       additionalProperties: false
@@ -1580,12 +1619,27 @@ components:
     DailyReport:
       type: object
       required:
-        [id, user_id, department_id, work_date, content, status, version, published_at, updated_at]
+        [
+          id,
+          user_id,
+          department_id,
+          work_date,
+          scope,
+          task_id,
+          content,
+          status,
+          version,
+          published_at,
+          updated_at,
+        ]
       properties:
         id: { $ref: '#/components/schemas/Uuid' }
         user_id: { $ref: '#/components/schemas/Uuid' }
         department_id: { $ref: '#/components/schemas/Uuid' }
         work_date: { $ref: '#/components/schemas/DateString' }
+        scope: { $ref: '#/components/schemas/DailyReportScope' }
+        task_id:
+          oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }]
         content: { $ref: '#/components/schemas/DailyReportContent' }
         status: { $ref: '#/components/schemas/DailyReportStatus' }
         version: { type: integer, minimum: 1 }

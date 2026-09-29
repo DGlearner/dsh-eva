@@ -160,6 +160,7 @@ export const modelConfigs = platform.table('model_configs', {
     .references(() => users.id, { onDelete: 'cascade' }),
   baseUrl: text('base_url').notNull(),
   model: text('model').notNull(),
+  models: text('models').array().notNull(),
   temperature: numeric('temperature', { precision: 3, scale: 2 }).notNull().default('0.70'),
   maxOutputTokens: integer('max_output_tokens'),
   apiKeySecretId: uuid('api_key_secret_id').references(() => secrets.id),
@@ -247,7 +248,7 @@ export const knowledgeProviderConfigs = platform.table('knowledge_provider_confi
     .notNull()
     .unique()
     .references(() => tenants.id),
-  provider: text('provider').notNull().default('fake'),
+  provider: text('provider').notNull().default('disabled'),
   remoteMcpEnabled: boolean('remote_mcp_enabled').notNull().default(false),
   endpoint: text('endpoint'),
   authSecretId: uuid('auth_secret_id').references(() => secrets.id),

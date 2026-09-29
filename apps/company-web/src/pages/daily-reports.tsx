@@ -1,8 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, History, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { Link, useSearchParams } from 'react-router';
 import { z } from 'zod';
 import { Badge, Button, Field, InlineAlert, Textarea } from '@company/ui';
 import { api, ApiProblem, problemMessage, type Schema } from '../api';
@@ -19,74 +20,129 @@ import { companyWorkDate } from '../date';
 import { automationStatusLabel, useAutomationOperation } from '../hooks/use-automation-operation';
 import styles from '../workbench.module.css';
 
-const contentSchema = z.object({
-  completed_today: z.string().max(20_000),
-  next_plan: z.string().max(20_000),
-  blockers: z.string().max(20_000),
-  other: z.string().max(20_000),
-  free_text: z.string().nullable(),
-});
-type ContentValues = z.infer<typeof contentSchema>;
+const formSchema = z.object({ body: z.string().max(20_000, '日报正文不能超过 20000 字') });
+type FormValues = z.infer<typeof formSchema>;
+type ReportScope = Schema<'DailyReportScope'>;
+type ReportSelector = { scope: ReportScope; task_id?: string };
 
-const emptyContent: ContentValues = {
-  completed_today: '',
-  next_plan: '',
-  blockers: '',
-  other: '',
-  free_text: null,
-};
 const reportStatus: Record<Schema<'DailyReportStatus'>, string> = {
   draft: '草稿',
   published: '已提交',
   deleted: '已删除',
 };
+const scopeLabel: Record<ReportScope, string> = {
+  personal: '个人日报',
+  department: '部门日报',
+  company: '公司日报',
+  task: '任务日报',
+};
+
+function reportText(content: Schema<'DailyReportContent'>): string {
+  if (content.free_text?.trim()) return content.free_text.trim();
+  const sections: Array<[string, string]> = [
+    ['今日完成', content.completed_today],
+    ['下一步计划', content.next_plan],
+    ['阻塞 / 风险', content.blockers],
+    ['其他说明', content.other],
+  ];
+  return sections
+    .filter(([, value]) => value.trim())
+    .map(([label, value]) => `${label}：${value}`)
+    .join('\n');
+}
+
+function reportContent(body: string): Schema<'DailyReportContent'> {
+  return {
+    completed_today: '',
+    next_plan: '',
+    blockers: '',
+    other: '',
+    free_text: body,
+  };
+}
 
 export function DailyReportsPage() {
+  const [searchParams] = useSearchParams();
+  const taskId = searchParams.get('task_id') || null;
+  const taskReturnSearch = new URLSearchParams(searchParams);
+  taskReturnSearch.delete('task_id');
+  const meQuery = useMe();
   const [date, setDate] = useState(companyWorkDate);
+  const [scope, setScope] = useState<Exclude<ReportScope, 'task'>>('department');
   const [status, setStatus] = useState('');
   const [preview, setPreview] = useState<Schema<'DailyReportContent'> | null>(null);
   const [rewriteOperationId, setRewriteOperationId] = useState<string | null>(null);
   const [rewriteSourceRevision, setRewriteSourceRevision] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  const availableScopes = useMemo<Array<Exclude<ReportScope, 'task'>>>(() => {
+    if (meQuery.data?.user.platform_role === 'admin') {
+      return ['personal', 'department', 'company'];
+    }
+    if (meQuery.data?.department?.org_role === 'manager') return ['personal', 'department'];
+    return ['department'];
+  }, [meQuery.data]);
+  useEffect(() => {
+    if (!availableScopes.includes(scope)) setScope(availableScopes[0]!);
+  }, [availableScopes, scope]);
+
+  const selector = useMemo<ReportSelector>(
+    () => (taskId ? { scope: 'task', task_id: taskId } : { scope }),
+    [scope, taskId],
+  );
+  const selectorKey = `${selector.scope}:${selector.task_id ?? ''}`;
+  const task = useQuery({
+    queryKey: ['task', taskId],
+    queryFn: () => api.task(taskId!),
+    enabled: Boolean(taskId),
+    retry: false,
+  });
   const reports = useQuery({
-    queryKey: ['daily-reports', status],
+    queryKey: ['daily-reports', selectorKey, status],
     queryFn: () =>
       api.dailyReports({
+        scope: selector.scope,
+        task_id: selector.task_id,
         status: (status || undefined) as Schema<'DailyReportStatus'> | undefined,
       }),
     retry: false,
   });
   const report = useQuery({
-    queryKey: ['daily-report', date],
-    queryFn: () => api.dailyReport(date),
+    queryKey: ['daily-report', date, selectorKey],
+    queryFn: () => api.dailyReport(date, selector),
     retry: false,
   });
   const missing = report.error instanceof ApiProblem && report.error.status === 404;
   const reportRevision = report.data
-    ? `${date}:${report.data.id}:${report.data.version}:${report.data.status}`
-    : `${date}:missing`;
-  const form = useForm<ContentValues>({
-    resolver: zodResolver(contentSchema),
-    defaultValues: emptyContent,
+    ? `${selectorKey}:${date}:${report.data.id}:${report.data.version}:${report.data.status}`
+    : `${selectorKey}:${date}:missing`;
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { body: '' },
   });
+
   useEffect(() => {
-    if (report.data) form.reset(report.data.content);
-    else if (missing) form.reset(emptyContent);
+    if (report.data) form.reset({ body: reportText(report.data.content) });
+    else if (missing) form.reset({ body: '' });
   }, [form, missing, report.data]);
   useEffect(() => {
     setPreview(null);
     setRewriteOperationId(null);
     setRewriteSourceRevision(null);
     setNotice(null);
-  }, [date]);
+  }, [date, selectorKey]);
+
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['daily-reports'] });
-    void queryClient.invalidateQueries({ queryKey: ['daily-report', date] });
+    void queryClient.invalidateQueries({ queryKey: ['daily-report', date, selectorKey] });
   };
   const save = useMutation({
-    mutationFn: (content: ContentValues) =>
-      api.saveDailyReport(date, { content, expected_version: report.data?.version ?? 0 }),
+    mutationFn: ({ body }: FormValues) =>
+      api.saveDailyReport(date, selector, {
+        content: reportContent(body),
+        expected_version: report.data?.version ?? 0,
+      }),
     onSuccess: () => {
       setNotice('日报草稿已保存。');
       invalidate();
@@ -96,7 +152,7 @@ export function DailyReportsPage() {
     },
   });
   const publish = useMutation({
-    mutationFn: () => api.publishDailyReport(date, report.data!.version),
+    mutationFn: () => api.publishDailyReport(date, selector, report.data!.version),
     onSuccess: () => {
       setNotice('日报已提交。');
       invalidate();
@@ -126,13 +182,13 @@ export function DailyReportsPage() {
   }, [rewriteAutomation.errorMessage]);
   const apply = useMutation({
     mutationFn: () =>
-      api.applyDailyRewrite(date, {
+      api.applyDailyRewrite(date, selector, {
         operation_id: rewriteOperationId!,
         content: preview!,
         expected_version: report.data!.version,
       }),
     onSuccess: (data) => {
-      form.reset(data.content);
+      form.reset({ body: reportText(data.content) });
       setPreview(null);
       setRewriteOperationId(null);
       setRewriteSourceRevision(null);
@@ -152,13 +208,14 @@ export function DailyReportsPage() {
     setNotice('日报内容已更新，旧改写预览已失效。');
   }, [apply, reportRevision, rewriteSourceRevision]);
   const remove = useMutation({
-    mutationFn: () => api.deleteDailyReport(date, report.data!.version),
+    mutationFn: () => api.deleteDailyReport(date, selector, report.data!.version),
     onSuccess: () => {
-      setNotice('日报已软删除。');
-      form.reset(emptyContent);
+      setNotice('日报已删除。');
+      form.reset({ body: '' });
       invalidate();
     },
   });
+
   const actionError = save.error ?? publish.error ?? apply.error ?? remove.error;
   const hasPendingRewrite = rewriteAutomation.isRunning || Boolean(preview);
   const hasReportMutation =
@@ -170,18 +227,32 @@ export function DailyReportsPage() {
     report.data?.status !== 'deleted' &&
     rewriteSourceRevision === reportRevision &&
     !rewriteAutomation.isRunning;
+  const currentLabel = scopeLabel[selector.scope];
 
   return (
     <div className={styles.page}>
       <PageHeader
-        title="我的日报"
-        description="按公司时区维护每个工作日的一份日报。"
+        title={currentLabel}
+        description={
+          taskId
+            ? `记录“${task.data?.title ?? '当前任务'}”的当日进展。`
+            : '选择日报层级，使用一段正文记录当天进展。'
+        }
         actions={
-          report.data ? (
-            <Badge tone={report.data.status === 'published' ? 'success' : 'warning'}>
-              {reportStatus[report.data.status]}
-            </Badge>
-          ) : undefined
+          <>
+            {taskId && (
+              <Link
+                to={`/workbench/tasks/${taskId}${taskReturnSearch.size ? `?${taskReturnSearch.toString()}` : ''}`}
+              >
+                <Button icon={<ArrowLeft />}>返回任务</Button>
+              </Link>
+            )}
+            {report.data && (
+              <Badge tone={report.data.status === 'published' ? 'success' : 'warning'}>
+                {reportStatus[report.data.status]}
+              </Badge>
+            )}
+          </>
         }
       />
       {(notice || actionError) && (
@@ -196,6 +267,29 @@ export function DailyReportsPage() {
       )}
       {rewriteAutomation.errorMessage && (
         <InlineAlert title="日报改写未完成">{rewriteAutomation.errorMessage}</InlineAlert>
+      )}
+      {!taskId && (
+        <div className={styles.reportScopeBar}>
+          <div className={styles.segmented} aria-label="日报层级">
+            {availableScopes.map((value) => (
+              <button
+                type="button"
+                key={value}
+                className={`${styles.segment} ${scope === value ? styles.segmentActive : ''}`}
+                onClick={() => setScope(value)}
+              >
+                {scopeLabel[value]}
+              </button>
+            ))}
+          </div>
+          <span className={styles.muted}>
+            {meQuery.data?.user.platform_role === 'admin'
+              ? '公司领导权限'
+              : meQuery.data?.department?.org_role === 'manager'
+                ? '部门主管权限'
+                : '部门员工权限'}
+          </span>
+        </div>
       )}
       <div className={styles.toolbar}>
         <div className={styles.filters}>
@@ -228,27 +322,25 @@ export function DailyReportsPage() {
         <ErrorState error={report.error} retry={() => void report.refetch()} />
       ) : (
         <div className={styles.editor}>
-          <Panel title={missing ? `${date} · 新建日报` : `${date} · 编辑日报`}>
+          <Panel
+            title={missing ? `${date} · 新建${currentLabel}` : `${date} · 编辑${currentLabel}`}
+          >
             <form
-              className={styles.form}
+              className={`${styles.form} ${styles.reportForm}`}
               onSubmit={form.handleSubmit((values) => {
                 if (!hasPendingRewrite && !hasReportMutation) save.mutate(values);
               })}
             >
-              <Field label="今日完成">
-                <Textarea {...form.register('completed_today')} />
-              </Field>
-              <Field label="下一步计划">
-                <Textarea {...form.register('next_plan')} />
-              </Field>
-              <Field label="阻塞 / 风险">
-                <Textarea {...form.register('blockers')} />
-              </Field>
-              <Field label="其他说明">
-                <Textarea {...form.register('other')} />
-              </Field>
-              <Field label="自由文本">
-                <Textarea {...form.register('free_text')} />
+              <Field
+                label="日报正文"
+                error={form.formState.errors.body?.message}
+                hint={taskId ? '填写这项任务今天的进展、问题和下一步。' : '用一段文字记录即可。'}
+              >
+                <Textarea
+                  rows={13}
+                  placeholder="记录今天完成的工作、遇到的问题和接下来的安排…"
+                  {...form.register('body')}
+                />
               </Field>
               <div className={styles.formFooter}>
                 <Button
@@ -276,7 +368,7 @@ export function DailyReportsPage() {
                     setRewriteOperationId(null);
                     setRewriteSourceRevision(reportRevision);
                     void rewriteAutomation.start(() =>
-                      api.rewriteDailyReport(date, {
+                      api.rewriteDailyReport(date, selector, {
                         mode: 'polish',
                         expected_version: report.data!.version,
                       }),
@@ -319,19 +411,12 @@ export function DailyReportsPage() {
             </form>
           </Panel>
           <div className={styles.stack}>
-            {preview ? (
+            {preview && (
               <section className={styles.preview}>
                 <h3>AI 改写预览</h3>
-                <dl className={styles.definitionList}>
-                  <dt>今日完成</dt>
-                  <dd>{preview.completed_today}</dd>
-                  <dt>下一步</dt>
-                  <dd>{preview.next_plan}</dd>
-                  <dt>阻塞</dt>
-                  <dd>{preview.blockers}</dd>
-                  <dt>其他</dt>
-                  <dd>{preview.other}</dd>
-                </dl>
+                <p className={styles.reportPreviewText}>
+                  {reportText(preview) || '改写结果为空。'}
+                </p>
                 <div className={styles.actionRow}>
                   <Button
                     variant="primary"
@@ -355,23 +440,38 @@ export function DailyReportsPage() {
                   </Button>
                 </div>
               </section>
-            ) : null}
-            <Panel title="历史日报">
+            )}
+            <Panel
+              title={`${currentLabel}历史`}
+              actions={
+                <span className={styles.panelTitleIcon}>
+                  <History aria-hidden="true" />
+                </span>
+              }
+            >
               {reports.isLoading ? (
                 <LoadingState rows={3} />
               ) : reports.error ? (
                 <ErrorState error={reports.error} retry={() => void reports.refetch()} />
               ) : reports.data?.items.length ? (
-                <ul className={styles.plainList}>
+                <ul className={styles.historyList}>
                   {reports.data.items.map((item) => (
                     <li key={item.id}>
-                      <button className={styles.segment} onClick={() => setDate(item.work_date)}>
-                        {item.work_date}
-                      </button>{' '}
-                      <Badge tone={item.status === 'published' ? 'success' : 'warning'}>
-                        {reportStatus[item.status]}
-                      </Badge>
-                      <div className={styles.muted}>{item.content.completed_today}</div>
+                      <button
+                        className={styles.historyItem}
+                        onClick={() => setDate(item.work_date)}
+                      >
+                        <span className={styles.historyDate}>
+                          <CalendarDays aria-hidden="true" />
+                          {item.work_date}
+                        </span>
+                        <Badge tone={item.status === 'published' ? 'success' : 'warning'}>
+                          {reportStatus[item.status]}
+                        </Badge>
+                        <span className={styles.historySummary}>
+                          {reportText(item.content) || '暂无正文'}
+                        </span>
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -411,7 +511,7 @@ export function DepartmentDailyReportsPage() {
 
   return (
     <div className={styles.page}>
-      <PageHeader title="部门日报" description="查看本部门已提交和未提交成员。" />
+      <PageHeader title="部门日报" description="按日期查看本部门成员提交的部门日报。" />
       <div className={styles.toolbar}>
         <div className={styles.filters}>
           <input
@@ -452,49 +552,37 @@ export function DepartmentDailyReportsPage() {
       ) : query.error ? (
         <ErrorState error={query.error} retry={() => void query.refetch()} />
       ) : !query.data?.items.length ? (
-        <EmptyState title="没有部门日报记录" description="调整日期范围或成员筛选。" />
+        <EmptyState title="没有部门日报记录" description="调整日期或成员筛选。" />
       ) : (
-        <section className={styles.panel}>
-          <div className={styles.reports}>
-            {query.data.items.map((item) => (
-              <article className={styles.reportRow} key={`${item.user.id}-${item.work_date}`}>
-                <div>
+        <section className={styles.reports} aria-label="部门日报列表">
+          {query.data.items.map((item) => (
+            <article className={styles.reportRow} key={`${item.user.id}-${item.work_date}`}>
+              <div className={styles.reportPerson}>
+                <span className={styles.reportAvatar} aria-hidden="true">
+                  {item.user.display_name.slice(0, 1)}
+                </span>
+                <span>
                   <strong>{item.user.display_name}</strong>
-                  <div className={styles.muted}>{item.work_date}</div>
-                </div>
-                {item.report ? (
-                  <div className={styles.reportContent}>
-                    <div>
-                      <strong>今日完成</strong>
-                      <span>{item.report.content.completed_today}</span>
-                    </div>
-                    <div>
-                      <strong>下一步计划</strong>
-                      <span>{item.report.content.next_plan}</span>
-                    </div>
-                    <div>
-                      <strong>阻塞 / 风险</strong>
-                      <span>{item.report.content.blockers}</span>
-                    </div>
-                    <div>
-                      <strong>其他</strong>
-                      <span>{item.report.content.other}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <span className={styles.muted}>该成员尚未提交日报。</span>
+                  <span className={styles.muted}>{item.work_date}</span>
+                </span>
+              </div>
+              {item.report ? (
+                <p className={styles.reportBodyText}>
+                  {reportText(item.report.content) || '暂无正文'}
+                </p>
+              ) : (
+                <span className={styles.muted}>该成员尚未提交日报。</span>
+              )}
+              <div>
+                <Badge tone={item.report?.status === 'published' ? 'success' : 'warning'}>
+                  {item.report ? reportStatus[item.report.status] : '未提交'}
+                </Badge>
+                {item.report && (
+                  <div className={styles.muted}>{formatDateTime(item.report.updated_at)}</div>
                 )}
-                <div>
-                  <Badge tone={item.report?.status === 'published' ? 'success' : 'warning'}>
-                    {item.report ? reportStatus[item.report.status] : '未提交'}
-                  </Badge>
-                  {item.report && (
-                    <div className={styles.muted}>{formatDateTime(item.report.updated_at)}</div>
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
+              </div>
+            </article>
+          ))}
         </section>
       )}
     </div>

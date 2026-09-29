@@ -126,6 +126,8 @@ describe('RunnerManager', () => {
         imageVersion: 'test',
         dataRoot,
         runnerIdentityRootSecret: Buffer.alloc(32, 8),
+        agentToolGatewayUrl:
+          'http://control-plane:8080/internal/v1/agent-tools/query-company-system',
       }),
       healthAttempts: 1,
       healthIntervalMs: 0,
@@ -158,6 +160,8 @@ describe('RunnerManager', () => {
         imageVersion: 'test',
         dataRoot,
         runnerIdentityRootSecret: Buffer.alloc(32, 8),
+        agentToolGatewayUrl:
+          'http://control-plane:8080/internal/v1/agent-tools/query-company-system',
       }),
       healthAttempts: 1,
       healthIntervalMs: 0,
@@ -342,6 +346,7 @@ function template(dataRoot: string) {
     imageVersion: 'test',
     dataRoot,
     runnerIdentityRootSecret: Buffer.alloc(32, 8),
+    agentToolGatewayUrl: 'http://control-plane:8080/internal/v1/agent-tools/query-company-system',
   });
 }
 

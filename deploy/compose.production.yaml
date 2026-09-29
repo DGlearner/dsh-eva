@@ -1,0 +1,178 @@
+services:
+  postgres:
+    image: postgres:16.10-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: company_dsh
+      POSTGRES_USER: company_dsh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U company_dsh -d company_dsh]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [platform]
+
+  redis:
+    image: redis:7.4.5-bookworm
+    restart: unless-stopped
+    command: [redis-server, --appendonly, 'yes', --appendfsync, everysec, --save, '60', '1000']
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-data:/data
+    networks: [platform]
+
+  migrate-platform:
+    build:
+      context: ..
+      dockerfile: services/control-plane/Dockerfile
+    command: [node, packages/db/dist/migrate-platform.js]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [platform]
+    profiles: [ops]
+
+  migrate-business:
+    build:
+      context: ..
+      dockerfile: services/business-api/Dockerfile
+    command: [node, packages/db/dist/migrate-business.js]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      BUSINESS_INCLUDE_DEV_MIGRATIONS: 'false'
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [platform]
+    profiles: [ops]
+
+  bootstrap-platform:
+    build:
+      context: ..
+      dockerfile: services/control-plane/Dockerfile
+    command: [node, packages/db/dist/bootstrap-platform.js]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      BOOTSTRAP_TENANT_NAME: ${BOOTSTRAP_TENANT_NAME:-}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-}
+      BOOTSTRAP_ADMIN_DISPLAY_NAME: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [platform]
+    profiles: [bootstrap]
+
+  business-api:
+    build:
+      context: ..
+      dockerfile: services/business-api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3102
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      BUSINESS_REPOSITORY: postgres
+      KNOWLEDGE_PROVIDER: ${KNOWLEDGE_PROVIDER:-disabled}
+      AUTOMATION_PROVIDER: ${AUTOMATION_PROVIDER:-disabled}
+      INTERNAL_AUTOMATION_BASE_URL: ${INTERNAL_AUTOMATION_BASE_URL:-http://control-plane:8080}
+      INTERNAL_AUTOMATION_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?set INTERNAL_SERVICE_TOKEN}
+      ACTOR_TOKEN_SECRET: ${ACTOR_TOKEN_SECRET:?set ACTOR_TOKEN_SECRET}
+      ACTOR_TOKEN_ISSUER: ${ACTOR_TOKEN_ISSUER:-company-control-plane}
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [platform]
+
+  runner-manager:
+    build:
+      context: ..
+      dockerfile: services/runner-manager/Dockerfile
+    restart: unless-stopped
+    user: '10001:${DOCKER_GID:?set DOCKER_GID}'
+    group_add:
+      - '${DOCKER_GID:?set DOCKER_GID}'
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      REDIS_URL: redis://redis:6379/0
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?set INTERNAL_SERVICE_TOKEN}
+      RUNNER_IDENTITY_SECRET_BASE64: ${RUNNER_IDENTITY_SECRET_BASE64:?set RUNNER_IDENTITY_SECRET_BASE64}
+      RUNNER_DATA_ROOT: ${RUNNER_DATA_ROOT:?set absolute RUNNER_DATA_ROOT}
+      RUNNER_IMAGE: ${RUNNER_IMAGE:?set RUNNER_IMAGE}
+      RUNNER_IMAGE_VERSION: ${RUNNER_IMAGE_VERSION:?set RUNNER_IMAGE_VERSION}
+      RUNNER_INGRESS_NETWORK: ${RUNNER_INGRESS_NETWORK:-company-runner-production}
+      RUNNER_EGRESS_NETWORK: ${RUNNER_EGRESS_NETWORK:-company-runner-egress-production}
+      COMPANY_AGENT_TOOL_GATEWAY_URL: ${COMPANY_AGENT_TOOL_GATEWAY_URL:-http://control-plane:8080/internal/v1/agent-tools/query-company-system}
+      RUNNER_MANAGER_HOST: 0.0.0.0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${RUNNER_DATA_ROOT}:${RUNNER_DATA_ROOT}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks: [platform, company-runner, company-runner-egress]
+
+  control-plane:
+    build:
+      context: ..
+      dockerfile: services/control-plane/Dockerfile
+    restart: unless-stopped
+    user: 10001:10001
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?set INTERNAL_SERVICE_TOKEN}
+      MODEL_SECRET_KEY_BASE64: ${MODEL_SECRET_KEY_BASE64:?set MODEL_SECRET_KEY_BASE64}
+      RUNNER_IDENTITY_SECRET_BASE64: ${RUNNER_IDENTITY_SECRET_BASE64:?set RUNNER_IDENTITY_SECRET_BASE64}
+      RUNNER_MANAGER_URL: http://runner-manager:8081
+      RUNNER_DATA_ROOT: ${RUNNER_DATA_ROOT:?set absolute RUNNER_DATA_ROOT}
+      CONTROL_PLANE_HOST: 0.0.0.0
+      BUSINESS_API_URL: http://business-api:3102
+      ACTOR_TOKEN_SECRET: ${ACTOR_TOKEN_SECRET:?set ACTOR_TOKEN_SECRET}
+      ACTOR_TOKEN_ISSUER: ${ACTOR_TOKEN_ISSUER:-company-control-plane}
+      KNOWLEDGE_PROVIDER: ${KNOWLEDGE_PROVIDER:-disabled}
+      AUTOMATION_EXECUTOR: ${AUTOMATION_EXECUTOR:-disabled}
+      WORKBENCH_ENTRY_URL: ${WORKBENCH_ENTRY_URL:-/workbench}
+      MODEL_BASE_URL_ALLOWLIST: ${MODEL_BASE_URL_ALLOWLIST:-}
+    volumes:
+      - ${RUNNER_DATA_ROOT}:${RUNNER_DATA_ROOT}
+    depends_on:
+      postgres: { condition: service_healthy }
+      runner-manager: { condition: service_started }
+      business-api: { condition: service_healthy }
+    networks: [platform, company-runner]
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: apps/company-web/Dockerfile
+    restart: unless-stopped
+    ports: ['127.0.0.1:${GATEWAY_PORT:-8080}:8080']
+    depends_on:
+      control-plane: { condition: service_started }
+    networks: [platform]
+
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  platform:
+  company-runner:
+    name: ${RUNNER_INGRESS_NETWORK:-company-runner-production}
+    internal: true
+  company-runner-egress:
+    name: ${RUNNER_EGRESS_NETWORK:-company-runner-egress-production}
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_icc: 'false'

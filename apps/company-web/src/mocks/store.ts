@@ -75,11 +75,14 @@ export function getModelConfig() {
 }
 
 export function saveModelConfig(input: Schema<'UpdateModelConfigRequest'>): Schema<'ModelConfig'> {
-  modelConfig = {
+  const models = ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v3.2'];
+  const updated: Schema<'ModelConfig'> = {
     base_url: input.base_url,
-    model: input.model,
-    temperature: input.temperature,
-    max_output_tokens: input.max_output_tokens ?? null,
+    model: modelConfig && models.includes(modelConfig.model) ? modelConfig.model : models[0]!,
+    models,
+    model_count: models.length,
+    temperature: modelConfig?.temperature ?? 0.7,
+    max_output_tokens: modelConfig?.max_output_tokens ?? null,
     has_api_key: Boolean(input.api_key) || Boolean(modelConfig?.has_api_key),
     api_key_hint: input.api_key
       ? `••••${input.api_key.slice(-4)}`
@@ -87,7 +90,8 @@ export function saveModelConfig(input: Schema<'UpdateModelConfigRequest'>): Sche
     version: (modelConfig?.version ?? 0) + 1,
     updated_at: fixture.clock.now,
   };
-  return modelConfig;
+  modelConfig = updated;
+  return updated;
 }
 
 export function resetStore() {

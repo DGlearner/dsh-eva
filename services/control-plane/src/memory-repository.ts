@@ -4,10 +4,12 @@ import type {
   AuditEventRecord,
   DepartmentRecord,
   IdempotencyRecord,
+  KnowledgeProviderRecord,
   MembershipRecord,
   ModelConfigRecord,
   ModelConfigStageRecord,
   PlatformRepository,
+  RagUserBindingRecord,
   SessionRecord,
   SessionStatus,
   UserRecord,
@@ -24,6 +26,8 @@ export class MemoryPlatformRepository implements PlatformRepository {
   readonly webSessions = new Map<string, WebSessionRecord>();
   readonly modelConfigs = new Map<string, ModelConfigRecord>();
   readonly modelConfigStages = new Map<string, ModelConfigStageRecord>();
+  readonly knowledgeProviderConfigs = new Map<string, KnowledgeProviderRecord>();
+  readonly ragUserBindings = new Map<string, RagUserBindingRecord>();
   readonly workspaces = new Map<string, WorkspaceRecord>();
   readonly sessions = new Map<string, SessionRecord>();
   readonly audits: AuditEventRecord[] = [];
@@ -173,6 +177,14 @@ export class MemoryPlatformRepository implements PlatformRepository {
 
   async getModelConfig(userId: string): Promise<ModelConfigRecord | null> {
     return this.modelConfigs.get(userId) ?? null;
+  }
+
+  async getKnowledgeProviderConfig(tenantId: string): Promise<KnowledgeProviderRecord | null> {
+    return structuredClone(this.knowledgeProviderConfigs.get(tenantId) ?? null);
+  }
+
+  async getRagUserBinding(userId: string): Promise<RagUserBindingRecord | null> {
+    return structuredClone(this.ragUserBindings.get(userId) ?? null);
   }
 
   async putModelConfig(

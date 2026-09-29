@@ -6,6 +6,7 @@ import { TaskService } from './application/task-service.js';
 import type { AutomationPort } from './ports/automation.js';
 import type { Clock } from './ports/clock.js';
 import type { BusinessRepository } from './ports/repository.js';
+import { dependencyUnavailable } from './domain/errors.js';
 import { ActorTokenVerifier } from './http/auth.js';
 import { registerDailyReportRoutes } from './http/daily-report-routes.js';
 import { registerKnowledgeRoutes } from './http/knowledge-routes.js';
@@ -18,6 +19,7 @@ export interface BuildBusinessAppOptions {
   clock: Clock;
   actorTokenSecret: string;
   actorTokenIssuer: string;
+  knowledgeEnabled?: boolean;
   healthCheck?: () => Promise<void>;
   logger?: boolean;
 }
@@ -67,7 +69,15 @@ export function buildBusinessApp(options: BuildBusinessAppOptions): FastifyInsta
           'business request completed',
         );
       });
-      registerKnowledgeRoutes(business, knowledge);
+      if (options.knowledgeEnabled === false) {
+        business.all('/knowledge/*', async () => {
+          throw dependencyUnavailable(
+            'Knowledge is disabled until a production provider is configured.',
+          );
+        });
+      } else {
+        registerKnowledgeRoutes(business, knowledge);
+      }
       registerTaskRoutes(business, tasks);
       registerDailyReportRoutes(business, dailyReports);
     },

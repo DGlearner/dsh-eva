@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 
+import { DisabledAutomationProvider } from './adapters/automation/disabled-automation-provider.js';
 import { FakeAutomationProvider } from './adapters/automation/fake-automation-provider.js';
 import { InternalAutomationClient } from './adapters/automation/internal-automation-client.js';
 import { FakeBusinessRepository } from './adapters/fake/fake-business-repository.js';
@@ -44,6 +45,7 @@ export async function startBusinessRuntime(
     clock,
     actorTokenSecret: config.actorTokenSecret,
     actorTokenIssuer: config.actorTokenIssuer,
+    knowledgeEnabled: config.knowledgeMode !== 'disabled',
     healthCheck: () => repository.healthCheck(),
     logger: dependencies.logger ?? true,
   });
@@ -92,6 +94,7 @@ function createAutomation(
   clock: Clock,
   dependencies: BusinessRuntimeDependencies,
 ): AutomationPort {
+  if (config.automationMode === 'disabled') return new DisabledAutomationProvider();
   if (config.automationMode === 'internal') {
     if (
       config.internalAutomationBaseUrl === null ||

@@ -4,10 +4,12 @@ import type {
   AuditEventRecord,
   DepartmentRecord,
   IdempotencyRecord,
+  KnowledgeProviderRecord,
   MembershipRecord,
   ModelConfigRecord,
   ModelConfigStageRecord,
   PlatformRepository,
+  RagUserBindingRecord,
   SessionRecord,
   SessionStatus,
   UserRecord,
@@ -112,14 +114,23 @@ function mapWebSession(row: QueryResultRow): WebSessionRecord {
 
 export class PgPlatformRepository implements PlatformRepository {
   readonly pool: pg.Pool;
+  private readonly lockPool: pg.Pool;
 
   constructor(connectionString: string | pg.Pool) {
-    this.pool =
-      typeof connectionString === 'string' ? new Pool({ connectionString }) : connectionString;
+    if (typeof connectionString === 'string') {
+      this.pool = new Pool({ connectionString });
+      // Advisory locks can wait while holding a connection. Keep those waits out of the
+      // business pool so concurrent /chat requests cannot starve the lock holder's queries.
+      this.lockPool = new Pool({ connectionString, max: 4 });
+    } else {
+      this.pool = connectionString;
+      this.lockPool = connectionString;
+    }
   }
 
   async close(): Promise<void> {
     await this.pool.end();
+    if (this.lockPool !== this.pool) await this.lockPool.end();
   }
 
   async getDefaultTenantId(): Promise<string> {
@@ -387,6 +398,7 @@ export class PgPlatformRepository implements PlatformRepository {
       userId: row.user_id,
       baseUrl: row.base_url,
       model: row.model,
+      models: row.models,
       temperature: Number(row.temperature),
       maxOutputTokens: row.max_output_tokens,
       apiKeyCiphertext: row.ciphertext ? (row.ciphertext as Buffer).toString('utf8') : null,
@@ -395,6 +407,49 @@ export class PgPlatformRepository implements PlatformRepository {
       version: row.version,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+    };
+  }
+
+  async getKnowledgeProviderConfig(tenantId: string): Promise<KnowledgeProviderRecord | null> {
+    const result = await this.pool.query(
+      `SELECT tenant_id, provider, remote_mcp_enabled, endpoint, allowed_tools,
+              config_version, version
+       FROM platform.knowledge_provider_configs
+       WHERE tenant_id=$1`,
+      [tenantId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      tenantId: row.tenant_id as string,
+      provider: row.provider as KnowledgeProviderRecord['provider'],
+      remoteMcpEnabled: row.remote_mcp_enabled as boolean,
+      endpoint: row.endpoint as string | null,
+      allowedTools: row.allowed_tools as string[],
+      configVersion: row.config_version as number,
+      version: row.version as number,
+    };
+  }
+
+  async getRagUserBinding(userId: string): Promise<RagUserBindingRecord | null> {
+    const result = await this.pool.query(
+      `SELECT b.user_id, b.rag_employee_id, b.status, b.version, s.ciphertext, s.hint
+       FROM platform.rag_user_bindings b
+       LEFT JOIN platform.secrets s ON s.id=b.token_secret_id AND s.revoked_at IS NULL
+       WHERE b.user_id=$1`,
+      [userId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      userId: row.user_id as string,
+      ragEmployeeId: row.rag_employee_id as string,
+      tokenCiphertext: row.ciphertext
+        ? (row.ciphertext as Buffer).toString('utf8')
+        : null,
+      tokenHint: row.hint as string | null,
+      status: row.status as RagUserBindingRecord['status'],
+      version: row.version as number,
     };
   }
 
@@ -430,13 +485,14 @@ export class PgPlatformRepository implements PlatformRepository {
       if (current) {
         await client.query(
           `UPDATE platform.model_configs SET
-             base_url=$2, model=$3, temperature=$4, max_output_tokens=$5,
-             api_key_secret_id=$6, config_version=config_version+1, version=version+1, updated_at=now()
+             base_url=$2, model=$3, models=$4, temperature=$5, max_output_tokens=$6,
+             api_key_secret_id=$7, config_version=config_version+1, version=version+1, updated_at=now()
            WHERE user_id=$1`,
           [
             config.userId,
             config.baseUrl,
             config.model,
+            config.models,
             config.temperature,
             config.maxOutputTokens,
             secretId,
@@ -445,13 +501,14 @@ export class PgPlatformRepository implements PlatformRepository {
       } else {
         await client.query(
           `INSERT INTO platform.model_configs
-            (id,user_id,base_url,model,temperature,max_output_tokens,api_key_secret_id,config_version,version,created_at,updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,1,1,$8,$8)`,
+            (id,user_id,base_url,model,models,temperature,max_output_tokens,api_key_secret_id,config_version,version,created_at,updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,1,$9,$9)`,
           [
             config.id,
             config.userId,
             config.baseUrl,
             config.model,
+            config.models,
             config.temperature,
             config.maxOutputTokens,
             secretId,
@@ -470,7 +527,7 @@ export class PgPlatformRepository implements PlatformRepository {
   }
 
   async withUserConfigLock<T>(userId: string, action: () => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
+    const client = await this.lockPool.connect();
     try {
       await client.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [userId]);
       try {
@@ -484,7 +541,7 @@ export class PgPlatformRepository implements PlatformRepository {
   }
 
   async withIdempotencyLock<T>(scope: string, action: () => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
+    const client = await this.lockPool.connect();
     try {
       await client.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [scope]);
       try {
@@ -522,9 +579,9 @@ export class PgPlatformRepository implements PlatformRepository {
       const stageId = crypto.randomUUID();
       const result = await client.query(
         `INSERT INTO platform.model_config_stages
-          (id,config_id,user_id,base_version,config_version,base_url,model,temperature,
+          (id,config_id,user_id,base_version,config_version,base_url,model,models,temperature,
            max_output_tokens,api_key_ciphertext,api_key_hint,state,created_at,updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending',now(),now())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',now(),now())
          RETURNING *`,
         [
           stageId,
@@ -534,6 +591,7 @@ export class PgPlatformRepository implements PlatformRepository {
           (current?.config_version ?? 0) + 1,
           config.baseUrl,
           config.model,
+          config.models,
           config.temperature,
           config.maxOutputTokens,
           config.apiKeyCiphertext !== null
@@ -591,20 +649,22 @@ export class PgPlatformRepository implements PlatformRepository {
         : null;
       const activated = await client.query(
         `INSERT INTO platform.model_configs
-          (id,user_id,base_url,model,temperature,max_output_tokens,api_key_secret_id,
+          (id,user_id,base_url,model,models,temperature,max_output_tokens,api_key_secret_id,
            config_version,version,created_at,updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now(),now())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),now())
          ON CONFLICT (user_id) DO UPDATE SET
-           base_url=excluded.base_url, model=excluded.model, temperature=excluded.temperature,
+           base_url=excluded.base_url, model=excluded.model, models=excluded.models,
+           temperature=excluded.temperature,
            max_output_tokens=excluded.max_output_tokens, api_key_secret_id=excluded.api_key_secret_id,
            config_version=excluded.config_version, version=excluded.version, updated_at=now()
-         WHERE platform.model_configs.version=$10
+         WHERE platform.model_configs.version=$11
          RETURNING id`,
         [
           row.config_id,
           userId,
           row.base_url,
           row.model,
+          row.models,
           row.temperature,
           row.max_output_tokens,
           secretId,
@@ -865,6 +925,7 @@ function mapModelConfigStage(row: QueryResultRow): ModelConfigStageRecord {
     baseVersion: row.base_version as number,
     baseUrl: row.base_url as string,
     model: row.model as string,
+    models: row.models as string[],
     temperature: Number(row.temperature),
     maxOutputTokens: row.max_output_tokens as number | null,
     apiKeyCiphertext: row.api_key_ciphertext

@@ -10,7 +10,19 @@ Workbench entry. It also exposes rc.7's existing `SessionEvent.ignorable` envelo
 adding company types to DSH's generated event catalog. The same patch authenticates every HTTP RPC
 and WebSocket upgrade with the short-lived Control Plane JWT and verifies tenant, user, Runner,
 issuer, audience, request, and expiry claims against the current Runner's derived identity secret.
+That verified identity is also the remote-company equivalent of DSH's loopback check for privileged
+configuration RPCs; the Control Plane keeps the public method and field allowlist.
 
 ```bash
-git -C vendor/deepseek-harness apply --check ../../runtimes/dsh-runner/patches/company-web-chat-base.patch
+npx -y pnpm@11.7.0 dsh:check
 ```
+
+`dsh-lock.json` freezes the upstream commit, tag, package version, patch, and exact patched-file scope.
+To assess another checkout without changing the submodule first:
+
+```bash
+node runtimes/dsh-runner/scripts/check-dsh-upgrade.mjs /path/to/deepseek-harness-candidate
+```
+
+Passing this preflight proves only that the current patch applies. The candidate still requires the
+Runner image build and Docker P0 regression before the lock may be updated.

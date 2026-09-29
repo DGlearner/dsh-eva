@@ -88,7 +88,9 @@ services:
       DATABASE_URL: postgresql://company_dsh:${POSTGRES_PASSWORD}@postgres:5432/company_dsh
       BUSINESS_REPOSITORY: postgres
       KNOWLEDGE_PROVIDER: fake
-      AUTOMATION_PROVIDER: fake
+      AUTOMATION_PROVIDER: internal
+      INTERNAL_AUTOMATION_BASE_URL: http://control-plane:8080
+      INTERNAL_AUTOMATION_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?set INTERNAL_SERVICE_TOKEN}
       ACTOR_TOKEN_SECRET: ${ACTOR_TOKEN_SECRET:?set ACTOR_TOKEN_SECRET}
       ACTOR_TOKEN_ISSUER: ${ACTOR_TOKEN_ISSUER:-company-control-plane}
     depends_on:
@@ -112,6 +114,7 @@ services:
       RUNNER_IMAGE_VERSION: ${RUNNER_IMAGE_VERSION:-99f6f02fecdb7dff40c3fbc9470f5907c29f74ca}
       RUNNER_INGRESS_NETWORK: ${RUNNER_INGRESS_NETWORK:-company-runner}
       RUNNER_EGRESS_NETWORK: ${RUNNER_EGRESS_NETWORK:-company-runner-egress}
+      COMPANY_AGENT_TOOL_GATEWAY_URL: ${COMPANY_AGENT_TOOL_GATEWAY_URL:-http://control-plane:8080/internal/v1/agent-tools/query-company-system}
       RUNNER_MANAGER_HOST: 0.0.0.0
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -144,6 +147,7 @@ services:
       REMOTE_MCP_AUTH_SECRET_REF: ${REMOTE_MCP_AUTH_SECRET_REF:-}
       WORKBENCH_ENTRY_URL: ${WORKBENCH_ENTRY_URL:-/workbench}
       MODEL_BASE_URL_ALLOWLIST: ${MODEL_BASE_URL_ALLOWLIST:-}
+      AUTOMATION_EXECUTOR: model
     volumes:
       - ${RUNNER_DATA_ROOT}:${RUNNER_DATA_ROOT}
     depends_on:

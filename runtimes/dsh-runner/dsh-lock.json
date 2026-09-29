@@ -1,0 +1,17 @@
+{
+  "commit": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
+  "tag": "dsh-v0.1.0-rc.7",
+  "version": "0.1.0-rc.7",
+  "patch": "patches/company-web-chat-base.patch",
+  "patchedFiles": [
+    "apps/web/index.html",
+    "apps/web/src/main.ts",
+    "apps/web/vite.config.ts",
+    "packages/client/connection/src/index.ts",
+    "packages/client/connection/src/runner-identity.ts",
+    "packages/client/connection/tsconfig.host.json",
+    "packages/client/modules/src/index.ts",
+    "packages/core/session/src/index.ts",
+    "packages/core/session/src/types.ts"
+  ]
+}

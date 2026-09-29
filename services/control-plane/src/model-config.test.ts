@@ -3,7 +3,13 @@ import { randomUUID } from 'node:crypto';
 import argon2 from 'argon2';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { buildControlPlane, type RunnerAdminClient, type UserConfigMaterializer } from './app.js';
+import {
+  buildControlPlane,
+  type ModelProbeInput,
+  type ModelProbeResult,
+  type RunnerAdminClient,
+  type UserConfigMaterializer,
+} from './app.js';
 import type { ModelConfigRecord, UserRecord } from './domain.js';
 import { registerDshGateway } from './gateway.js';
 import { MemoryPlatformRepository } from './memory-repository.js';
@@ -108,7 +114,7 @@ describe('model configuration activation', () => {
     });
     await harness.repository.putModelConfig(modelConfig(), 0);
 
-    const update = putConfig(harness, 1, 'fixture-model-v2');
+    const update = putConfig(harness, 1);
     await stopStarted.promise;
     const chat = rpc(harness, 'session.list', {});
     await delay(15);
@@ -121,13 +127,85 @@ describe('model configuration activation', () => {
     expect((await harness.repository.getModelConfig(userId))?.configVersion).toBe(2);
   });
 
+  it('persists the complete catalog, reuses the saved key, and selects a valid default', async () => {
+    const seenKeys: Array<string | null> = [];
+    const catalogs = [
+      ['z-model', 'a-model', 'a-model'],
+      ['c-model', 'a-model'],
+      ['c-model', 'b-model'],
+    ];
+    const harness = await createHarness({
+      modelProbe: async (input) => {
+        seenKeys.push(input.apiKey);
+        return {
+          ok: true,
+          latencyMs: 3,
+          errorCode: null,
+          models: catalogs.shift()!,
+        };
+      },
+    });
+
+    const first = await putConfig(harness, 0);
+    expect(first.json()).toMatchObject({
+      model: 'a-model',
+      models: ['a-model', 'z-model'],
+      model_count: 2,
+    });
+
+    const preserved = await putConfig(harness, 1, undefined);
+    expect(preserved.json()).toMatchObject({ model: 'a-model', models: ['a-model', 'c-model'] });
+
+    const replaced = await putConfig(harness, 2, undefined);
+    expect(replaced.json()).toMatchObject({ model: 'b-model', models: ['b-model', 'c-model'] });
+    expect(seenKeys).toEqual([
+      'fixture-key-not-real',
+      'fixture-key-not-real',
+      'fixture-key-not-real',
+    ]);
+    expect((await harness.repository.getModelConfig(userId))?.models).toEqual([
+      'b-model',
+      'c-model',
+    ]);
+  });
+
+  it('does not replace an active config when model discovery fails', async () => {
+    let succeeds = true;
+    const harness = await createHarness({
+      modelProbe: async () =>
+        succeeds
+          ? { ok: true, latencyMs: 3, errorCode: null, models: ['fixture-model'] }
+          : { ok: false, latencyMs: 3, errorCode: 'upstream_401', models: [] },
+    });
+    expect((await putConfig(harness, 0)).statusCode).toBe(200);
+    succeeds = false;
+
+    const failed = await putConfig(harness, 1, undefined);
+
+    expect(failed.statusCode).toBe(422);
+    expect(failed.json()).toMatchObject({ code: 'upstream_401' });
+    expect(await harness.repository.getModelConfig(userId)).toMatchObject({
+      version: 1,
+      models: ['fixture-model'],
+    });
+  });
+
   it('uses the configured private URL allowlist validator for the default connection probe', async () => {
     const validated: string[] = [];
     const fetchMock = vi.fn(async (_input: string | URL | Request) =>
-      Response.json({ object: 'list', data: [] }),
+      Response.json({
+        object: 'list',
+        data: [
+          { id: 'fixture-reasoner' },
+          { id: 'fixture-chat' },
+          { id: 'fixture-chat' },
+          { id: ' ' },
+        ],
+      }),
     );
     vi.stubGlobal('fetch', fetchMock);
     const harness = await createHarness({
+      useDefaultModelProbe: true,
       validateModelUrl: async (value) => {
         validated.push(value);
         return new URL(value);
@@ -139,13 +217,44 @@ describe('model configuration activation', () => {
       method: 'POST',
       url: '/company-api/v1/model-config/test',
       headers: { cookie: harness.cookie, 'x-csrf-token': harness.csrf },
-      payload: { base_url: baseUrl, model: 'fixture-model', api_key: 'fixture-key' },
+      payload: { base_url: baseUrl, api_key: 'fixture-key' },
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ ok: true, error_code: null });
+    expect(response.json()).toMatchObject({
+      ok: true,
+      error_code: null,
+      models: ['fixture-chat', 'fixture-reasoner'],
+      model_count: 2,
+    });
     expect(validated).toEqual([baseUrl, baseUrl]);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`${baseUrl}/models`);
+  });
+
+  it('reports empty and invalid model catalog responses without saving them', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ object: 'list', data: [] }))
+      .mockResolvedValueOnce(new Response('not-json', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const harness = await createHarness({ useDefaultModelProbe: true });
+
+    const empty = await testConfig(harness);
+    const invalid = await testConfig(harness);
+
+    expect(empty.json()).toMatchObject({
+      ok: false,
+      error_code: 'model_catalog_empty',
+      models: [],
+      model_count: 0,
+    });
+    expect(invalid.json()).toMatchObject({
+      ok: false,
+      error_code: 'model_response_invalid',
+      models: [],
+      model_count: 0,
+    });
+    expect(await harness.repository.getModelConfig(userId)).toBeNull();
   });
 });
 
@@ -155,6 +264,8 @@ async function createHarness(
     runnerAdminClient?: RunnerAdminClient;
     ensureVersions?: number[];
     validateModelUrl?: (value: string) => Promise<URL>;
+    useDefaultModelProbe?: boolean;
+    modelProbe?: (input: ModelProbeInput) => Promise<ModelProbeResult>;
   } = {},
 ) {
   const repository = new MemoryPlatformRepository(tenantId);
@@ -195,6 +306,15 @@ async function createHarness(
     validateModelUrl: options.validateModelUrl ?? (async (value) => new URL(value)),
     configMaterializer: materializer,
     runnerAdminClient: options.runnerAdminClient ?? runnerAdmin(async () => undefined),
+    modelProbe: options.useDefaultModelProbe
+      ? undefined
+      : (options.modelProbe ??
+        (async () => ({
+          ok: true,
+          latencyMs: 3,
+          errorCode: null,
+          models: ['fixture-model', 'fixture-reasoner'],
+        }))),
   });
   registerGateway(app, repository, options.ensureVersions ?? []);
   openApps.push(app);
@@ -227,6 +347,7 @@ function modelConfig(): ModelConfigRecord {
     userId,
     baseUrl: 'https://model.example/v1',
     model: 'fixture-model-v1',
+    models: ['fixture-model-v1'],
     temperature: 0.7,
     maxOutputTokens: 2048,
     apiKeyCiphertext: null,
@@ -241,7 +362,7 @@ function modelConfig(): ModelConfigRecord {
 async function putConfig(
   harness: Awaited<ReturnType<typeof createHarness>>,
   expectedVersion: number,
-  model = 'fixture-model',
+  apiKey: string | undefined = 'fixture-key-not-real',
 ) {
   return harness.app.inject({
     method: 'PUT',
@@ -249,10 +370,18 @@ async function putConfig(
     headers: { cookie: harness.cookie, 'x-csrf-token': harness.csrf },
     payload: {
       base_url: 'https://model.example/v1',
-      model,
-      api_key: 'fixture-key-not-real',
+      ...(apiKey === undefined ? {} : { api_key: apiKey }),
       expected_version: expectedVersion,
     },
+  });
+}
+
+async function testConfig(harness: Awaited<ReturnType<typeof createHarness>>) {
+  return harness.app.inject({
+    method: 'POST',
+    url: '/company-api/v1/model-config/test',
+    headers: { cookie: harness.cookie, 'x-csrf-token': harness.csrf },
+    payload: { base_url: 'https://model.example/v1', api_key: 'fixture-key-not-real' },
   });
 }
 

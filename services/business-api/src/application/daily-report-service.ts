@@ -7,6 +7,7 @@ import type {
   AutomationOperation,
   DailyReport,
   DailyReportContent,
+  DailyReportScope,
   DailyReportStatus,
   DailyRewriteResult,
   Department,
@@ -33,6 +34,11 @@ export interface DepartmentDailyReportView {
   next_cursor: string | null;
 }
 
+export interface DailyReportSelector {
+  scope: DailyReportScope;
+  task_id: UUID | null;
+}
+
 export class DailyReportService {
   constructor(
     private readonly repository: BusinessRepository,
@@ -46,6 +52,8 @@ export class DailyReportService {
       from?: string;
       to?: string;
       status?: DailyReportStatus;
+      scope?: DailyReportScope;
+      task_id?: UUID;
       cursor: string | null;
       limit: number;
     },
@@ -56,6 +64,8 @@ export class DailyReportService {
       .filter((report) => filters.from === undefined || report.work_date >= filters.from)
       .filter((report) => filters.to === undefined || report.work_date <= filters.to)
       .filter((report) => filters.status === undefined || report.status === filters.status)
+      .filter((report) => filters.scope === undefined || report.scope === filters.scope)
+      .filter((report) => filters.task_id === undefined || report.task_id === filters.task_id)
       .filter((report) => filters.status === 'deleted' || report.status !== 'deleted')
       .sort(
         (left, right) =>
@@ -65,8 +75,18 @@ export class DailyReportService {
     return paginate(reports, filters.cursor, filters.limit);
   }
 
-  async get(actor: ActorContext, workDate: string): Promise<DailyReport> {
-    const report = await this.repository.getDailyReport(actor.tenantId, actor.userId, workDate);
+  async get(
+    actor: ActorContext,
+    workDate: string,
+    selector: DailyReportSelector,
+  ): Promise<DailyReport> {
+    const report = await this.repository.getDailyReport(
+      actor.tenantId,
+      actor.userId,
+      workDate,
+      selector.scope,
+      selector.task_id,
+    );
     if (report === null) throw notFound('Daily report');
     return report;
   }
@@ -74,12 +94,19 @@ export class DailyReportService {
   async upsert(
     actor: ActorContext,
     workDate: string,
+    selector: DailyReportSelector,
     content: DailyReportContent,
     expectedVersion: number,
   ): Promise<DailyReport> {
     return this.repository.transaction(async () => {
-      const departmentId = requireDepartment(actor);
-      const existing = await this.repository.getDailyReport(actor.tenantId, actor.userId, workDate);
+      const departmentId = await this.assertCanWrite(actor, selector);
+      const existing = await this.repository.getDailyReport(
+        actor.tenantId,
+        actor.userId,
+        workDate,
+        selector.scope,
+        selector.task_id,
+      );
       const now = this.clock.now().toISOString();
       if (existing === null) {
         if (expectedVersion !== 0) throw versionConflict(0);
@@ -89,6 +116,8 @@ export class DailyReportService {
           user_id: actor.userId,
           department_id: departmentId,
           work_date: workDate,
+          scope: selector.scope,
+          task_id: selector.task_id,
           content,
           status: 'draft',
           version: 1,
@@ -138,6 +167,7 @@ export class DailyReportService {
   async publish(
     actor: ActorContext,
     workDate: string,
+    selector: DailyReportSelector,
     expectedVersion: number,
     idempotencyKey: string,
   ): Promise<IdempotentResult<DailyReport>> {
@@ -145,12 +175,13 @@ export class DailyReportService {
       repository: this.repository,
       clock: this.clock,
       actor,
-      route: `POST /daily-reports/${workDate}/publish`,
+      route: `POST /daily-reports/${workDate}/publish?scope=${selector.scope}&task_id=${selector.task_id ?? ''}`,
       key: idempotencyKey,
       request: { expected_version: expectedVersion },
       statusCode: 200,
       execute: async () => {
-        const report = await this.ownedReport(actor, workDate);
+        await this.assertCanWrite(actor, selector);
+        const report = await this.ownedReport(actor, workDate, selector);
         if (report.version !== expectedVersion) throw versionConflict(report.version);
         if (report.status !== 'draft') {
           throw conflict('daily_report_not_publishable', 'Only draft reports can be published.');
@@ -171,7 +202,7 @@ export class DailyReportService {
           action: 'daily_report.published',
           resourceType: 'daily_report',
           resourceId: report.id,
-          details: { work_date: report.work_date },
+          details: { work_date: report.work_date, scope: report.scope, task_id: report.task_id },
         });
         return updated;
       },
@@ -181,6 +212,7 @@ export class DailyReportService {
   async startRewrite(
     actor: ActorContext,
     workDate: string,
+    selector: DailyReportSelector,
     mode: 'polish' | 'shorten' | 'structure',
     expectedVersion: number,
     idempotencyKey: string,
@@ -189,12 +221,13 @@ export class DailyReportService {
       repository: this.repository,
       clock: this.clock,
       actor,
-      route: `POST /daily-reports/${workDate}/rewrite-runs`,
+      route: `POST /daily-reports/${workDate}/rewrite-runs?scope=${selector.scope}&task_id=${selector.task_id ?? ''}`,
       key: idempotencyKey,
       request: { mode, expected_version: expectedVersion },
       statusCode: 202,
       execute: async () => {
-        const report = await this.ownedReport(actor, workDate);
+        await this.assertCanWrite(actor, selector);
+        const report = await this.ownedReport(actor, workDate, selector);
         if (report.version !== expectedVersion) throw versionConflict(report.version);
         if (report.status === 'deleted') {
           throw conflict('daily_report_deleted', 'Deleted report cannot be rewritten.');
@@ -233,6 +266,7 @@ export class DailyReportService {
   async applyRewrite(
     actor: ActorContext,
     workDate: string,
+    selector: DailyReportSelector,
     input: { operation_id: UUID; content: DailyReportContent; expected_version: number },
     idempotencyKey: string,
   ): Promise<IdempotentResult<DailyReport>> {
@@ -240,12 +274,13 @@ export class DailyReportService {
       repository: this.repository,
       clock: this.clock,
       actor,
-      route: `POST /daily-reports/${workDate}/apply-rewrite`,
+      route: `POST /daily-reports/${workDate}/apply-rewrite?scope=${selector.scope}&task_id=${selector.task_id ?? ''}`,
       key: idempotencyKey,
       request: input,
       statusCode: 200,
       execute: async () => {
-        const report = await this.ownedReport(actor, workDate);
+        await this.assertCanWrite(actor, selector);
+        const report = await this.ownedReport(actor, workDate, selector);
         if (report.version !== input.expected_version) throw versionConflict(report.version);
         if (report.status === 'deleted') {
           throw conflict('daily_report_deleted', 'Deleted report cannot apply a rewrite.');
@@ -293,9 +328,15 @@ export class DailyReportService {
     });
   }
 
-  async delete(actor: ActorContext, workDate: string, expectedVersion: number): Promise<void> {
+  async delete(
+    actor: ActorContext,
+    workDate: string,
+    selector: DailyReportSelector,
+    expectedVersion: number,
+  ): Promise<void> {
     await this.repository.transaction(async () => {
-      const report = await this.ownedReport(actor, workDate);
+      await this.assertCanWrite(actor, selector);
+      const report = await this.ownedReport(actor, workDate, selector);
       if (report.version !== expectedVersion) throw versionConflict(report.version);
       if (report.status === 'deleted') return;
       const now = this.clock.now().toISOString();
@@ -316,7 +357,7 @@ export class DailyReportService {
         action: 'daily_report.deleted',
         resourceType: 'daily_report',
         resourceId: report.id,
-        details: { work_date: report.work_date },
+        details: { work_date: report.work_date, scope: report.scope, task_id: report.task_id },
       });
     });
   }
@@ -352,7 +393,7 @@ export class DailyReportService {
     const reports = await this.repository.listDailyReports(actor.tenantId);
     const byUserDate = new Map(
       reports
-        .filter((report) => report.department_id === departmentId)
+        .filter((report) => report.department_id === departmentId && report.scope === 'department')
         .map((report) => [`${report.user_id}:${report.work_date}`, report]),
     );
     const items: DepartmentDailyReportItem[] = [];
@@ -367,11 +408,49 @@ export class DailyReportService {
     return { department, from, to, items: page.items, next_cursor: page.next_cursor };
   }
 
-  private async ownedReport(actor: ActorContext, workDate: string): Promise<DailyReport> {
-    const report = await this.repository.getDailyReport(actor.tenantId, actor.userId, workDate);
+  private async ownedReport(
+    actor: ActorContext,
+    workDate: string,
+    selector: DailyReportSelector,
+  ): Promise<DailyReport> {
+    const report = await this.repository.getDailyReport(
+      actor.tenantId,
+      actor.userId,
+      workDate,
+      selector.scope,
+      selector.task_id,
+    );
     if (report === null) throw notFound('Daily report');
     if (report.user_id !== actor.userId) throw forbidden();
     return report;
+  }
+
+  private async assertCanWrite(actor: ActorContext, selector: DailyReportSelector): Promise<UUID> {
+    const departmentId = requireDepartment(actor);
+    if (selector.scope === 'company' && actor.platformRole !== 'admin') {
+      throw forbidden('Only company leaders can publish company reports.');
+    }
+    if (
+      selector.scope === 'personal' &&
+      actor.platformRole !== 'admin' &&
+      actor.orgRole !== 'manager'
+    ) {
+      throw forbidden('Department employees cannot publish personal reports.');
+    }
+    if (selector.scope === 'task') {
+      if (selector.task_id === null) throw badRequest('task_required', 'task_id is required.');
+      const task = await this.repository.getTask(actor.tenantId, selector.task_id);
+      if (task === null) throw notFound('Task');
+      if (task.assignee_user_id !== actor.userId || task.department_id !== departmentId) {
+        throw forbidden('Only the assigned employee can publish this task report.');
+      }
+      if (task.status === 'done' || task.status === 'cancelled') {
+        throw conflict('task_report_closed', 'Completed or cancelled tasks do not accept reports.');
+      }
+    } else if (selector.task_id !== null) {
+      throw badRequest('task_not_allowed', 'task_id is only valid for task reports.');
+    }
+    return departmentId;
   }
 
   private assertDateRange(from?: string, to?: string): void {

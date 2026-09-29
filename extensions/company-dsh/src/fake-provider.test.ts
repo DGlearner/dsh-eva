@@ -63,5 +63,8 @@ describe('RunnerFakeKnowledgeProvider', () => {
     expect(() =>
       validateKnowledgeProviderConfig({ provider: 'fake' }, { production: true }),
     ).toThrow('forbidden in production');
+    expect(() =>
+      validateKnowledgeProviderConfig({ provider: 'disabled' }, { production: true }),
+    ).not.toThrow();
   });
 });

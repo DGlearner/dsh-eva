@@ -211,44 +211,73 @@ export const api = {
         params: { path: { operation_id: id } },
       }),
     ),
-  dailyReports: (query: { from?: string; to?: string; status?: Schema<'DailyReportStatus'> }) =>
-    unwrap(client.GET('/daily-reports', { params: { query } })),
-  dailyReport: (date: string) =>
-    unwrap(client.GET('/daily-reports/{work_date}', { params: { path: { work_date: date } } })),
-  saveDailyReport: (date: string, body: Schema<'UpsertDailyReportRequest'>) =>
+  dailyReports: (query: {
+    from?: string;
+    to?: string;
+    status?: Schema<'DailyReportStatus'>;
+    scope?: Schema<'DailyReportScope'>;
+    task_id?: string;
+  }) => unwrap(client.GET('/daily-reports', { params: { query } })),
+  dailyReport: (date: string, query: { scope: Schema<'DailyReportScope'>; task_id?: string }) =>
+    unwrap(
+      client.GET('/daily-reports/{work_date}', {
+        params: { path: { work_date: date }, query },
+      }),
+    ),
+  saveDailyReport: (
+    date: string,
+    query: { scope: Schema<'DailyReportScope'>; task_id?: string },
+    body: Schema<'UpsertDailyReportRequest'>,
+  ) =>
     unwrap(
       client.PUT('/daily-reports/{work_date}', {
-        params: { path: { work_date: date }, header: csrfHeaders() },
+        params: { path: { work_date: date }, query, header: csrfHeaders() },
         body,
       }),
     ),
-  publishDailyReport: (date: string, expectedVersion: number) =>
+  publishDailyReport: (
+    date: string,
+    query: { scope: Schema<'DailyReportScope'>; task_id?: string },
+    expectedVersion: number,
+  ) =>
     unwrap(
       client.POST('/daily-reports/{work_date}/publish', {
-        params: { path: { work_date: date }, header: idempotentHeaders() },
+        params: { path: { work_date: date }, query, header: idempotentHeaders() },
         body: { expected_version: expectedVersion },
       }),
     ),
-  rewriteDailyReport: (date: string, body: Schema<'DailyRewriteRequest'>) =>
+  rewriteDailyReport: (
+    date: string,
+    query: { scope: Schema<'DailyReportScope'>; task_id?: string },
+    body: Schema<'DailyRewriteRequest'>,
+  ) =>
     unwrap(
       client.POST('/daily-reports/{work_date}/rewrite-runs', {
-        params: { path: { work_date: date }, header: idempotentHeaders() },
+        params: { path: { work_date: date }, query, header: idempotentHeaders() },
         body,
       }),
     ),
-  applyDailyRewrite: (date: string, body: Schema<'ApplyDailyRewriteRequest'>) =>
+  applyDailyRewrite: (
+    date: string,
+    query: { scope: Schema<'DailyReportScope'>; task_id?: string },
+    body: Schema<'ApplyDailyRewriteRequest'>,
+  ) =>
     unwrap(
       client.POST('/daily-reports/{work_date}/apply-rewrite', {
-        params: { path: { work_date: date }, header: idempotentHeaders() },
+        params: { path: { work_date: date }, query, header: idempotentHeaders() },
         body,
       }),
     ),
-  deleteDailyReport: (date: string, expectedVersion: number) =>
+  deleteDailyReport: (
+    date: string,
+    query: { scope: Schema<'DailyReportScope'>; task_id?: string },
+    expectedVersion: number,
+  ) =>
     unwrap(
       client.DELETE('/daily-reports/{work_date}', {
         params: {
           path: { work_date: date },
-          query: { expected_version: expectedVersion },
+          query: { ...query, expected_version: expectedVersion },
           header: csrfHeaders(),
         },
       }),

@@ -2,28 +2,59 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import type { DailyReportService } from '../application/daily-report-service.js';
+import type { DailyReportSelector } from '../application/daily-report-service.js';
 import { presentAutomation, presentDailyReport } from './presenters.js';
 import { cursorLimit, dailyContent, dateString, parseIdempotencyKey, uuid } from './schemas.js';
 
 const reportStatus = z.enum(['draft', 'published', 'deleted']);
+const reportScope = z.enum(['personal', 'department', 'company', 'task']);
+const selectorFields = { scope: reportScope.default('department'), task_id: uuid.optional() };
+
+function validateSelectorPair(
+  value: { scope?: z.infer<typeof reportScope>; task_id?: string },
+  context: z.RefinementCtx,
+): void {
+  if ((value.scope === 'task') !== (value.task_id !== undefined)) {
+    context.addIssue({
+      code: 'custom',
+      message: 'task_id is required only for task reports',
+    });
+  }
+}
+
+const selectorSchema = z.object(selectorFields).strict().superRefine(validateSelectorPair);
+const listQuerySchema = cursorLimit
+  .extend({
+    from: dateString.optional(),
+    to: dateString.optional(),
+    status: reportStatus.optional(),
+    scope: reportScope.optional(),
+    task_id: uuid.optional(),
+  })
+  .strict()
+  .superRefine(validateSelectorPair);
+const deleteQuerySchema = z
+  .object({ ...selectorFields, expected_version: z.coerce.number().int().min(1) })
+  .strict()
+  .superRefine(validateSelectorPair);
+
+function selector(value: unknown): DailyReportSelector {
+  const parsed = selectorSchema.parse(value);
+  return { scope: parsed.scope, task_id: parsed.task_id ?? null };
+}
 
 export function registerDailyReportRoutes(app: FastifyInstance, service: DailyReportService): void {
   app.get('/daily-reports', async (request) => {
-    const query = cursorLimit
-      .extend({
-        from: dateString.optional(),
-        to: dateString.optional(),
-        status: reportStatus.optional(),
-      })
-      .strict()
-      .parse(request.query);
+    const query = listQuerySchema.parse(request.query);
     const result = await service.list(request.actor, query);
     return { ...result, items: result.items.map(presentDailyReport) };
   });
 
   app.get('/daily-reports/:work_date', async (request) => {
     const params = z.object({ work_date: dateString }).parse(request.params);
-    return presentDailyReport(await service.get(request.actor, params.work_date));
+    return presentDailyReport(
+      await service.get(request.actor, params.work_date, selector(request.query)),
+    );
   });
 
   app.put('/daily-reports/:work_date', async (request) => {
@@ -33,7 +64,13 @@ export function registerDailyReportRoutes(app: FastifyInstance, service: DailyRe
       .strict()
       .parse(request.body);
     return presentDailyReport(
-      await service.upsert(request.actor, params.work_date, body.content, body.expected_version),
+      await service.upsert(
+        request.actor,
+        params.work_date,
+        selector(request.query),
+        body.content,
+        body.expected_version,
+      ),
     );
   });
 
@@ -46,6 +83,7 @@ export function registerDailyReportRoutes(app: FastifyInstance, service: DailyRe
     const result = await service.publish(
       request.actor,
       params.work_date,
+      selector(request.query),
       body.expected_version,
       parseIdempotencyKey(request.headers['idempotency-key']),
     );
@@ -64,6 +102,7 @@ export function registerDailyReportRoutes(app: FastifyInstance, service: DailyRe
     const result = await service.startRewrite(
       request.actor,
       params.work_date,
+      selector(request.query),
       body.mode,
       body.expected_version,
       parseIdempotencyKey(request.headers['idempotency-key']),
@@ -84,6 +123,7 @@ export function registerDailyReportRoutes(app: FastifyInstance, service: DailyRe
     const result = await service.applyRewrite(
       request.actor,
       params.work_date,
+      selector(request.query),
       body,
       parseIdempotencyKey(request.headers['idempotency-key']),
     );
@@ -92,11 +132,13 @@ export function registerDailyReportRoutes(app: FastifyInstance, service: DailyRe
 
   app.delete('/daily-reports/:work_date', async (request, reply) => {
     const params = z.object({ work_date: dateString }).parse(request.params);
-    const query = z
-      .object({ expected_version: z.coerce.number().int().min(1) })
-      .strict()
-      .parse(request.query);
-    await service.delete(request.actor, params.work_date, query.expected_version);
+    const query = deleteQuerySchema.parse(request.query);
+    await service.delete(
+      request.actor,
+      params.work_date,
+      { scope: query.scope, task_id: query.task_id ?? null },
+      query.expected_version,
+    );
     return reply.code(204).send();
   });
 

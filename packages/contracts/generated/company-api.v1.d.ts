@@ -618,7 +618,10 @@ export interface paths {
   };
   '/daily-reports/{work_date}': {
     parameters: {
-      query?: never;
+      query: {
+        scope: components['parameters']['DailyReportScope'];
+        task_id?: components['parameters']['DailyReportTaskId'];
+      };
       header?: never;
       path: {
         work_date: components['parameters']['WorkDate'];
@@ -735,6 +738,8 @@ export interface components {
     AutomationRunStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
     /** @enum {string} */
     DailyReportStatus: 'draft' | 'published' | 'deleted';
+    /** @enum {string} */
+    DailyReportScope: 'personal' | 'department' | 'company' | 'task';
     ProblemDetails: {
       type: string;
       title: string;
@@ -791,7 +796,10 @@ export interface components {
     ModelConfig: {
       /** Format: uri */
       base_url: string;
+      /** @description Automatically selected default model */
       model: string;
+      models: string[];
+      model_count: number;
       temperature: number;
       max_output_tokens: number | null;
       has_api_key: boolean;
@@ -802,23 +810,20 @@ export interface components {
     UpdateModelConfigRequest: {
       /** Format: uri */
       base_url: string;
-      model: string;
-      /** @default 0.7 */
-      temperature: number;
-      max_output_tokens?: number | null;
       api_key?: string;
       expected_version: number;
     };
     TestModelConfigRequest: {
       /** Format: uri */
       base_url: string;
-      model: string;
       api_key?: string | null;
     };
     ModelConfigTestResult: {
       ok: boolean;
       latency_ms: number;
       error_code: string | null;
+      models: string[];
+      model_count: number;
     };
     VersionedCommand: {
       expected_version: number;
@@ -1095,6 +1100,8 @@ export interface components {
       user_id: components['schemas']['Uuid'];
       department_id: components['schemas']['Uuid'];
       work_date: components['schemas']['DateString'];
+      scope: components['schemas']['DailyReportScope'];
+      task_id: components['schemas']['Uuid'] | null;
       content: components['schemas']['DailyReportContent'];
       status: components['schemas']['DailyReportStatus'];
       version: number;
@@ -1167,6 +1174,8 @@ export interface components {
     TaskId: components['schemas']['Uuid'];
     OperationId: components['schemas']['Uuid'];
     WorkDate: components['schemas']['DateString'];
+    DailyReportScope: components['schemas']['DailyReportScope'];
+    DailyReportTaskId: components['schemas']['Uuid'];
     KnowledgeScope: components['schemas']['KnowledgeScope'];
   };
   requestBodies: never;
@@ -2301,6 +2310,8 @@ export interface operations {
         from?: components['schemas']['DateString'];
         to?: components['schemas']['DateString'];
         status?: components['schemas']['DailyReportStatus'];
+        scope?: components['schemas']['DailyReportScope'];
+        task_id?: components['schemas']['Uuid'];
       };
       header?: never;
       path?: never;
@@ -2322,7 +2333,10 @@ export interface operations {
   };
   getDailyReport: {
     parameters: {
-      query?: never;
+      query: {
+        scope: components['parameters']['DailyReportScope'];
+        task_id?: components['parameters']['DailyReportTaskId'];
+      };
       header?: never;
       path: {
         work_date: components['parameters']['WorkDate'];
@@ -2345,7 +2359,10 @@ export interface operations {
   };
   upsertDailyReport: {
     parameters: {
-      query?: never;
+      query: {
+        scope: components['parameters']['DailyReportScope'];
+        task_id?: components['parameters']['DailyReportTaskId'];
+      };
       header: {
         'X-CSRF-Token': components['parameters']['CsrfToken'];
       };
@@ -2375,6 +2392,8 @@ export interface operations {
   deleteDailyReport: {
     parameters: {
       query: {
+        scope: components['parameters']['DailyReportScope'];
+        task_id?: components['parameters']['DailyReportTaskId'];
         expected_version: number;
       };
       header: {
@@ -2399,7 +2418,10 @@ export interface operations {
   };
   publishDailyReport: {
     parameters: {
-      query?: never;
+      query: {
+        scope: components['parameters']['DailyReportScope'];
+        task_id?: components['parameters']['DailyReportTaskId'];
+      };
       header: {
         'X-CSRF-Token': components['parameters']['CsrfToken'];
         'Idempotency-Key': components['parameters']['IdempotencyKey'];
@@ -2429,7 +2451,10 @@ export interface operations {
   };
   startDailyReportRewrite: {
     parameters: {
-      query?: never;
+      query: {
+        scope: components['parameters']['DailyReportScope'];
+        task_id?: components['parameters']['DailyReportTaskId'];
+      };
       header: {
         'X-CSRF-Token': components['parameters']['CsrfToken'];
         'Idempotency-Key': components['parameters']['IdempotencyKey'];
@@ -2459,7 +2484,10 @@ export interface operations {
   };
   applyDailyReportRewrite: {
     parameters: {
-      query?: never;
+      query: {
+        scope: components['parameters']['DailyReportScope'];
+        task_id?: components['parameters']['DailyReportTaskId'];
+      };
       header: {
         'X-CSRF-Token': components['parameters']['CsrfToken'];
         'Idempotency-Key': components['parameters']['IdempotencyKey'];

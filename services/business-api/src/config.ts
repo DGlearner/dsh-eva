@@ -1,7 +1,7 @@
 export type BusinessNodeEnv = 'development' | 'test' | 'production';
 export type BusinessRepositoryMode = 'fake' | 'postgres';
-export type AutomationProviderMode = 'fake' | 'internal';
-export type KnowledgeProviderMode = 'fake' | 'remote-mcp';
+export type AutomationProviderMode = 'disabled' | 'fake' | 'internal';
+export type KnowledgeProviderMode = 'disabled' | 'fake' | 'remote-mcp';
 
 export interface BusinessRuntimeConfig {
   nodeEnv: BusinessNodeEnv;
@@ -30,10 +30,12 @@ export function loadBusinessRuntimeConfig(
     'postgres',
   ] as const);
   const automationMode = choice('AUTOMATION_PROVIDER', env.AUTOMATION_PROVIDER ?? 'fake', [
+    'disabled',
     'fake',
     'internal',
   ] as const);
   const knowledgeMode = choice('KNOWLEDGE_PROVIDER', env.KNOWLEDGE_PROVIDER ?? 'fake', [
+    'disabled',
     'fake',
     'remote-mcp',
   ] as const);

@@ -83,7 +83,7 @@ const purposes: Record<AutomationKind, string> = {
 };
 
 export class InternalAutomationClient implements AutomationPort {
-  readonly provider = 'dsh' as const;
+  readonly provider = 'model' as const;
 
   constructor(
     private readonly baseUrl: string,

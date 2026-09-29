@@ -18,6 +18,12 @@ const app = buildControlPlane({
   repository,
   secretCipher: new SecretCipher(Buffer.alloc(32, 7)),
   validateModelUrl: async (value) => new URL(value),
+  modelProbe: async () => ({
+    ok: true,
+    latencyMs: 3,
+    errorCode: null,
+    models: ['fixture-model', 'fixture-reasoner'],
+  }),
   configMaterializer: {
     stage: async (input) => {
       materialized.push({ userId: input.userId, apiKey: input.apiKey });
@@ -99,15 +105,18 @@ describe('Wave 1 primary path', () => {
       headers: { cookie, 'x-csrf-token': csrf },
       payload: {
         base_url: 'https://model.example/v1',
-        model: 'fixture-model',
-        temperature: 0.7,
-        max_output_tokens: 2048,
         api_key: 'fixture-key-not-real',
         expected_version: 0,
       },
     });
     expect(configured.statusCode).toBe(200);
-    expect(configured.json()).toMatchObject({ has_api_key: true, api_key_hint: '****real' });
+    expect(configured.json()).toMatchObject({
+      has_api_key: true,
+      api_key_hint: '****real',
+      model: 'fixture-model',
+      models: ['fixture-model', 'fixture-reasoner'],
+      model_count: 2,
+    });
     expect(materialized).toEqual([{ userId, apiKey: 'fixture-key-not-real' }]);
     expect(stoppedUsers).toEqual([userId]);
 

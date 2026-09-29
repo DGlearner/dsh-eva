@@ -22,7 +22,13 @@ type RuntimeOperation = {
   polls: number;
   completed: boolean;
   taskContext?: { taskId: string; submissionId: string };
-  reportContext?: { userId: string; workDate: string; changeBeforeCompletion: boolean };
+  reportContext?: {
+    userId: string;
+    workDate: string;
+    scope: Schema<'DailyReportScope'>;
+    taskId: string | null;
+    changeBeforeCompletion: boolean;
+  };
 };
 
 const runtimeOperations = new Map<string, RuntimeOperation>();
@@ -77,6 +83,29 @@ async function guard(request: Request, options: { mutation?: boolean } = {}) {
 
 function current(request: Request) {
   return actor(requestedActor(request));
+}
+
+function reportSelector(request: Request) {
+  const url = new URL(request.url);
+  return {
+    scope: (url.searchParams.get('scope') ?? 'department') as Schema<'DailyReportScope'>,
+    taskId: url.searchParams.get('task_id'),
+  };
+}
+
+function matchesReport(
+  report: Schema<'DailyReport'>,
+  request: Request,
+  userId: string | undefined,
+  workDate?: string,
+) {
+  const selector = reportSelector(request);
+  return (
+    report.user_id === userId &&
+    (workDate === undefined || report.work_date === workDate) &&
+    report.scope === selector.scope &&
+    report.task_id === selector.taskId
+  );
 }
 
 function empty(request: Request) {
@@ -187,7 +216,9 @@ function completeDailyReportChange(runtime: RuntimeOperation) {
   const report = fixture.daily_reports.find(
     (item) =>
       item.user_id === runtime.reportContext?.userId &&
-      item.work_date === runtime.reportContext?.workDate,
+      item.work_date === runtime.reportContext?.workDate &&
+      item.scope === runtime.reportContext?.scope &&
+      item.task_id === runtime.reportContext?.taskId,
   );
   if (report) {
     report.status = 'draft';
@@ -243,6 +274,8 @@ export const handlers = [
       ok,
       latency_ms: ok ? 126 : 0,
       error_code: ok ? null : 'endpoint_unreachable',
+      models: ok ? ['deepseek-chat', 'deepseek-reasoner', 'deepseek-v3.2'] : [],
+      model_count: ok ? 3 : 0,
     });
   }),
   http.get(`${base}/knowledge/categories`, async ({ request }) => {
@@ -642,9 +675,13 @@ export const handlers = [
     const status = url.searchParams.get('status');
     const from = url.searchParams.get('from');
     const to = url.searchParams.get('to');
+    const scope = url.searchParams.get('scope');
+    const taskId = url.searchParams.get('task_id');
     const items = fixture.daily_reports.filter(
       (item) =>
         item.user_id === user?.id &&
+        (!scope || item.scope === scope) &&
+        (!taskId || item.task_id === taskId) &&
         (!status || item.status === status) &&
         (!from || item.work_date >= from) &&
         (!to || item.work_date <= to),
@@ -654,8 +691,8 @@ export const handlers = [
   http.get(`${base}/daily-reports/:workDate`, async ({ request, params }) => {
     const blocked = await guard(request);
     if (blocked) return blocked;
-    const item = fixture.daily_reports.find(
-      (report) => report.user_id === current(request)?.id && report.work_date === params.workDate,
+    const item = fixture.daily_reports.find((report) =>
+      matchesReport(report, request, current(request)?.id, String(params.workDate)),
     );
     return item
       ? HttpResponse.json(item)
@@ -668,8 +705,9 @@ export const handlers = [
       if (blocked) return blocked;
       const body = (await request.json()) as Schema<'UpsertDailyReportRequest'>;
       const user = current(request);
-      let item = fixture.daily_reports.find(
-        (report) => report.user_id === user?.id && report.work_date === params.workDate,
+      const selector = reportSelector(request);
+      let item = fixture.daily_reports.find((report) =>
+        matchesReport(report, request, user?.id, String(params.workDate)),
       );
       if (item) {
         item.content = body.content;
@@ -682,6 +720,8 @@ export const handlers = [
           user_id: user?.id ?? fixture.users[0]!.id,
           department_id: me(user?.username)?.department?.id ?? fixture.departments[0]!.id,
           work_date: String(params.workDate),
+          scope: selector.scope,
+          task_id: selector.taskId,
           content: body.content,
           status: 'draft',
           version: 1,
@@ -698,8 +738,8 @@ export const handlers = [
     mutableHandler(async ({ request, params }) => {
       const blocked = await guard(request, { mutation: true });
       if (blocked) return blocked;
-      const item = fixture.daily_reports.find(
-        (report) => report.user_id === current(request)?.id && report.work_date === params.workDate,
+      const item = fixture.daily_reports.find((report) =>
+        matchesReport(report, request, current(request)?.id, String(params.workDate)),
       );
       if (!item) return problem(404, 'not_found', '请先保存日报。');
       item.status = 'published';
@@ -715,11 +755,14 @@ export const handlers = [
       if (blocked) return blocked;
       const operation = operationTemplate('daily_rewrite');
       const user = current(request);
+      const selector = reportSelector(request);
       return operation
         ? HttpResponse.json(
             queueOperation(request, operation, undefined, {
               userId: user?.id ?? '',
               workDate: String(params.workDate),
+              scope: selector.scope,
+              taskId: selector.taskId,
               changeBeforeCompletion: scenario(request) === 'report-changed',
             }),
             { status: 202 },
@@ -733,8 +776,8 @@ export const handlers = [
       const blocked = await guard(request, { mutation: true });
       if (blocked) return blocked;
       const body = (await request.json()) as Schema<'ApplyDailyRewriteRequest'>;
-      const item = fixture.daily_reports.find(
-        (report) => report.user_id === current(request)?.id && report.work_date === params.workDate,
+      const item = fixture.daily_reports.find((report) =>
+        matchesReport(report, request, current(request)?.id, String(params.workDate)),
       );
       if (!item) return problem(404, 'not_found', '请先保存日报。');
       if (item.status === 'deleted')
@@ -762,8 +805,8 @@ export const handlers = [
     mutableHandler(async ({ request, params }) => {
       const blocked = await guard(request, { mutation: true });
       if (blocked) return blocked;
-      const item = fixture.daily_reports.find(
-        (report) => report.user_id === current(request)?.id && report.work_date === params.workDate,
+      const item = fixture.daily_reports.find((report) =>
+        matchesReport(report, request, current(request)?.id, String(params.workDate)),
       );
       if (!item) return problem(404, 'not_found', '未找到日报。');
       item.status = 'deleted';
@@ -805,7 +848,11 @@ export const handlers = [
       work_date: from,
       report:
         fixture.daily_reports.find(
-          (report) => report.user_id === membership.user_id && report.work_date === from,
+          (report) =>
+            report.user_id === membership.user_id &&
+            report.work_date === from &&
+            report.scope === 'department' &&
+            report.task_id === null,
         ) ?? null,
     }));
     return HttpResponse.json({

@@ -34,7 +34,7 @@ export interface AutomationProviderRun {
 }
 
 export interface AutomationPort {
-  readonly provider: 'fake' | 'dsh';
+  readonly provider: 'fake' | 'model' | 'dsh';
   start(input: StartAutomationInput): Promise<AutomationProviderRun>;
   get(input: GetAutomationInput): Promise<AutomationProviderRun>;
 }

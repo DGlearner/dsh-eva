@@ -211,6 +211,8 @@ describePostgres('PostgreSQL business repository', () => {
       user_id: DEV_A,
       department_id: DEV_DEPARTMENT,
       work_date: '2026-08-21',
+      scope: 'department',
+      task_id: null,
       content: {
         completed_today: 'done',
         next_plan: 'next',
@@ -227,7 +229,9 @@ describePostgres('PostgreSQL business repository', () => {
     };
     await repository.createDailyReport(report);
     await expect(repository.createDailyReport({ ...report, id: randomUUID() })).rejects.toThrow();
-    expect(await repository.getDailyReport(TENANT, DEV_A, report.work_date)).toEqual(report);
+    expect(
+      await repository.getDailyReport(TENANT, DEV_A, report.work_date, 'department', null),
+    ).toEqual(report);
   });
 
   it('atomically rejects an old rewrite after the report is soft-deleted', async () => {
@@ -302,7 +306,9 @@ describePostgres('PostgreSQL business repository', () => {
           'postgres-rewrite-apply',
         ),
       ).toBeNull();
-      expect(await repository.getDailyReport(TENANT, DEV_A, workDate)).toMatchObject({
+      expect(
+        await repository.getDailyReport(TENANT, DEV_A, workDate, 'department', null),
+      ).toMatchObject({
         status: 'deleted',
         version: 2,
       });

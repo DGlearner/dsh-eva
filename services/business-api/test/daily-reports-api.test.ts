@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { actors, authHeaders, createTestContext, DEV_A, DEV_DEPARTMENT } from './helpers.js';
+import { ADMIN, actors, authHeaders, createTestContext, DEV_A, DEV_DEPARTMENT } from './helpers.js';
 
 const contexts: ReturnType<typeof createTestContext>[] = [];
 afterEach(async () => {
@@ -16,6 +16,45 @@ const content = {
 };
 
 describe('Daily Reports API', () => {
+  it('enforces report scope permissions and keeps separate reports for the same date', async () => {
+    const context = createTestContext();
+    contexts.push(context);
+    const date = '2026-08-22';
+    const put = async (
+      actor: (typeof actors)[keyof typeof actors],
+      scope: 'personal' | 'department' | 'company' | 'task',
+      taskId?: string,
+    ) =>
+      context.app.inject({
+        method: 'PUT',
+        url: `/company-api/v1/daily-reports/${date}?scope=${scope}${taskId ? `&task_id=${taskId}` : ''}`,
+        headers: await authHeaders(actor),
+        payload: { content, expected_version: 0 },
+      });
+
+    expect((await put(actors.devA, 'personal')).statusCode).toBe(403);
+    expect((await put(actors.devA, 'department')).statusCode).toBe(200);
+    expect((await put(actors.manager, 'personal')).statusCode).toBe(200);
+    expect((await put(actors.manager, 'company')).statusCode).toBe(403);
+
+    const leader = {
+      ...actors.manager,
+      userId: ADMIN,
+      platformRole: 'admin' as const,
+    };
+    expect((await put(leader, 'personal')).statusCode).toBe(200);
+    expect((await put(leader, 'department')).statusCode).toBe(200);
+    expect((await put(leader, 'company')).statusCode).toBe(200);
+    const leaderReports = await context.repository.listDailyReports(leader.tenantId);
+    expect(
+      leaderReports.filter((report) => report.user_id === ADMIN && report.work_date === date),
+    ).toHaveLength(3);
+
+    const taskId = '00000000-0000-4000-8000-000000004002';
+    expect((await put(actors.devA, 'task', taskId)).statusCode).toBe(200);
+    expect((await put(actors.devB, 'task', taskId)).statusCode).toBe(403);
+  });
+
   it('keeps one row per user/work date, revisions edits, and reopens soft-deleted rows', async () => {
     const context = createTestContext();
     contexts.push(context);
@@ -182,7 +221,13 @@ describe('Daily Reports API', () => {
     expect(applied.statusCode).toBe(409);
     expect(applied.json()).toMatchObject({ code: 'daily_report_deleted' });
     expect(
-      await context.repository.getDailyReport(actors.devA.tenantId, actors.devA.userId, workDate),
+      await context.repository.getDailyReport(
+        actors.devA.tenantId,
+        actors.devA.userId,
+        workDate,
+        'department',
+        null,
+      ),
     ).toMatchObject({ id: report.json().id, status: 'deleted', version: 2 });
   });
 
@@ -196,7 +241,7 @@ describe('Daily Reports API', () => {
     });
     expect(view.statusCode).toBe(200);
     expect(view.json()).toMatchObject({ from: '2026-08-19', to: '2026-08-19' });
-    expect(view.json().items).toHaveLength(3);
+    expect(view.json().items).toHaveLength(4);
     expect(view.json().items.every((item: { report: unknown }) => item.report === null)).toBe(true);
 
     const denied = await context.app.inject({

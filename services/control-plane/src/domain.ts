@@ -53,6 +53,7 @@ export type ModelConfigRecord = {
   userId: string;
   baseUrl: string;
   model: string;
+  models: string[];
   temperature: number;
   maxOutputTokens: number | null;
   apiKeyCiphertext: string | null;
@@ -68,6 +69,25 @@ export type ModelConfigStageRecord = ModelConfigRecord & {
   baseVersion: number;
   state: 'pending' | 'active' | 'failed';
   errorCode: string | null;
+};
+
+export type KnowledgeProviderRecord = {
+  tenantId: string;
+  provider: 'disabled' | 'fake' | 'remote-mcp';
+  remoteMcpEnabled: boolean;
+  endpoint: string | null;
+  allowedTools: string[];
+  configVersion: number;
+  version: number;
+};
+
+export type RagUserBindingRecord = {
+  userId: string;
+  ragEmployeeId: string;
+  tokenCiphertext: string | null;
+  tokenHint: string | null;
+  status: 'inactive' | 'active' | 'revoked';
+  version: number;
 };
 
 export type WorkspaceRecord = {
@@ -164,6 +184,9 @@ export interface PlatformRepository {
   ): Promise<ModelConfigStageRecord>;
   activateModelConfig(stageId: string): Promise<ModelConfigRecord>;
   failModelConfigStage(stageId: string, errorCode: string): Promise<void>;
+
+  getKnowledgeProviderConfig(tenantId: string): Promise<KnowledgeProviderRecord | null>;
+  getRagUserBinding(userId: string): Promise<RagUserBindingRecord | null>;
 
   getSession(userId: string, sessionId: string): Promise<SessionRecord | null>;
   getSessionById(sessionId: string): Promise<SessionRecord | null>;

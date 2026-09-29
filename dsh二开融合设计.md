@@ -63,7 +63,7 @@ Docker Compose 不提供跨宿主机调度。首版如果部署多台服务器�
 
 - 简单本地账号密码登录，并建立可信 `tenant_id`、`user_id` 和角色上下文；
 - 浏览器中的会话创建、全部历史窗口、窗口内完整消息/事件、继续对话、停止生成和流式响应；
-- 用户模型 API URL、API Key 和基础模型参数配置；
+- 用户模型 API URL、API Key 配置，并自动发现该凭据可访问的全部模型；
 - 每用户 Runner 的按需启动、健康检查、空闲停止和异常恢复；
 - 使用 fake 数据完成公司/个人知识库分类、文件总览、入库状态和对话检索；真实 RAG/MCP 接入后复用相同界面和契约；
 - 主管发布需求、拆分子任务、指派人员、看板跟踪和自动化审核结果；
@@ -117,7 +117,7 @@ reviewed commit: 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca
 ```text
 1. admin 创建员工账号
 2. 员工使用账号密码登录
-3. 员工在 Company Workbench 保存模型 API URL、模型名和 API Key
+3. 员工在 Company Workbench 只保存模型 API URL 和 API Key，Control Plane 通过 `GET /models` 发现并持久化完整模型目录
 4. 员工访问受保护的 `/chat`，Gateway 根据 user_id 调用 Runner Manager 启动或定位独立 Runner
 5. Runner 加载用户 Settings、Credentials、JSONL Session 和可配置的知识工具入口；开发期指向 fake provider
 6. Gateway 把 DSH Web 及协议流量固定路由到该 Runner，员工看到自己的全部历史窗口
@@ -134,7 +134,7 @@ reviewed commit: 99f6f02fecdb7dff40c3fbc9470f5907c29f74ca
 
 P0 开发完成标准：使用两个测试账号，分别配置模型并完成包含 fake 知识检索的真实模型对话；可创建多个会话窗口并重新打开任意窗口的完整记录；两个账号互相看不到 Session/Workspace/fake 个人知识；停止并重建 Runner 后可以恢复各自会话；浏览器、日志和 Tool 结果中不出现完整 API Key。该标准只证明平台链路和预留契约可用，不宣称真实 RAG 的网络、认证、ACL、延迟或检索质量已经验收。
 
-为了尽快验证链路，P0 可以先只支持一个 OpenAI-compatible 模型配置、一个固定 Agent Profile、无个人 Skill、无用户自定义 MCP 和单 Workspace，但必须支持多会话窗口、完整历史以及一个可从 fake 切换为远程 MCP 的知识入口。任务与日报不阻塞 P0 联调，可以基于已合并契约和 fake 在独立 worktree 中并行开发。
+为了尽快验证链路，P0 只支持一个 OpenAI-compatible Provider 配置，但该 Provider 下可包含 `GET /models` 返回的多个模型；DSH Web 使用官方原生模型选择器为会话选型。P0 仍使用一个固定 Agent Profile、无个人 Skill、无用户自定义 MCP 和单 Workspace，但必须支持多会话窗口、完整历史以及一个可从 fake 切换为远程 MCP 的知识入口。任务与日报不阻塞 P0 联调，可以基于已合并契约和 fake 在独立 worktree 中并行开发。
 
 ## 2. 需要先澄清的三个概念
 
@@ -272,6 +272,8 @@ DSH 可以作为 Agent 运行底座，但以下能力应由公司控制面负责
 
 对于 `/company-api/v1/knowledge|requirements|tasks|daily-reports`，Gateway 先验证浏览器 Session/CSRF，再用不超过 60 秒的签名 Actor Token 将 `tenant_id/user_id/department/role/request_id` 传给 `business-api`。Gateway 必须删除浏览器伪造的内部 Header，`business-api` 必须验证 token 并再次按资源 owner/部门授权；它不直接依赖 `platform.web_sessions`，因此两个 worktree 可以只依赖冻结身份 claims 并行实现。
 
+对话 Agent 查询业务数据时使用同一套 Business API 和 PostgreSQL 权限，不复制业务表，也不依赖 RAG 同步。固定用户 Runner 只能向 Control Plane 内部 `Agent Tool Gateway` 提交白名单只读意图；Runner 用派生身份密钥签发 60 秒 JWT，Control Plane 重新验证活跃 Runner、账号、租户和部门身份，再签发同样的 Business Actor Token。模型不能提交 `user_id`、`tenant_id`、`department_id`、服务 URL、Header 或 Token，也不能构造任意上游路径。
+
 P0 官方 DSH Web 不会先调用 Company Sessions API 再创建会话，因此新 Session 的归属采用“固定用户 Runner/卷先隔离，创建后立即登记”。公司 DSH 插件优先上报 Session 创建/更新事件，Control Plane 定时扫描当前用户的 Session 列表兜底；登记和 reconcile 都必须幂等。Gateway 永远先由登录用户定位 Runner，不得根据浏览器提交的 `session_id` 反向选择其他 Runner。
 
 ### 3.4 MVP 本地账号
@@ -348,7 +350,7 @@ DSH_HOME=/dsh-user
 
 - 默认模型供应商；
 - API Base URL；
-- 默认模型名称；
+- 自动发现的模型目录和后台选出的默认模型；
 - 温度、最大输出等模型参数；
 - 用户界面或 Agent 偏好；
 - 已启用的受控 Skill/MCP 标识。
@@ -564,9 +566,9 @@ packages/test-fixtures/fixture-v1.json # 确定性公司/个人样例和检索�
 services/business-api/               # Knowledge fake Provider/API 实现
 ```
 
-### 6.4 后续真实 MCP 接入边界
+### 6.4 真实 MCP 接入边界与当前状态
 
-目标 RAG 基线已经核对，但不属于当前开发联调范围：
+目标 RAG 基线已经核对：
 
 ```text
 repository: /Users/freshpi/Documents/freshpi-ai/rag-mcp
@@ -577,14 +579,50 @@ transport: Streamable HTTP MCP at /mcp
 
 该基线已有 FastAPI、FastMCP、PostgreSQL/pgvector、MinIO、异步入库、混合检索、公司/个人知识 ACL 和审计能力。当前公司知识分类固定为 `company-information`、`xiaopai-design`、`patent-document`，个人知识不分类；fake fixtures 和契约应按这个现状构造，减少后续切换差异。
 
-开发交付后，真实接入只包含以下部署动作：
+截至 2026-08-28，Runner 到现有 MCP 的读链路已经实现：
 
-1. 部署或指定真实 `rag-mcp /mcp` 地址。
-2. 打开真实 MCP 启用开关，将 `knowledge.provider` 从 `fake` 改为 `remote-mcp`，配置受控 URL。
-3. 为平台用户绑定 RAG 员工身份和 PAT/后续短期 Token，并写入 `auth_secret_ref`。
-4. 关闭本地 fake Tool/Provider，运行同一套知识契约测试和双用户隔离测试。
+1. `platform.knowledge_provider_configs` 保存受控 HTTPS MCP URL 和只读 Tool 白名单。
+2. `platform.rag_user_bindings` 将平台 `user_id` 绑定到 RAG 员工身份，PAT 使用现有 AES-256-GCM 密钥加密保存在 `platform.secrets`。
+3. Control Plane 只在物化该用户 Runner 时解密 PAT；PAT 只进入权限 `0600` 的用户 `.env`，Cordis 配置只引用环境变量。
+4. 固定 Company Agent preset 通过官方 `@deepseek-ai/dsh-mcp-client` 连接 Streamable HTTP MCP。
+5. 当前只允许 `get_current_user`、`search_knowledge`、`list_knowledge_documents`，其他 MCP 工具执行被 Runner 策略拒绝。
+6. Runner 配置版本合并模型、租户知识源和员工绑定版本；PAT 轮换后下次打开 `/chat` 会自动换用新 Runner。
 
-真实接入时关闭本地 fake Tool，再由 DSH MCP Client 加载真实 MCP 的同名工具，避免同名冲突。若真实 MCP 与已锁定契约一致，切换不修改 Company Web、DSH Session、Agent Prompt 或工具结果解析。MCP 传输、Header、身份和网络配置由后续接入实现；只有契约测试证明存在差异时，才在 `integrations/rag-mcp` 增加薄适配。
+已用平台测试用户 `wdl` 完成运行态验证：Company preset 能创建 DSH Session，MCP `get_current_user` 返回同一名 `wdl` 员工。这证明身份、PAT 和 DSH MCP Client 装配链路可用；生产启用仍必须完成 14.4 的双用户 ACL、真实检索/引用、超时恢复和撤销测试。
+
+切换到 `remote-mcp` 时关闭本地 fake Tool，再由 DSH MCP Client 加载真实 MCP 的同名工具，避免同名冲突。若真实 MCP 与已锁定契约一致，切换不修改 Company Web、DSH Session、Agent Prompt 或工具结果解析。只有契约测试证明存在差异时，才在 `integrations/rag-mcp` 增加薄适配。
+
+### 6.5 Agent 查询系统业务内容
+
+“系统内容可由对话 Agent 查询”在首版定义为：Agent 可以读取当前登录用户在 Company Workbench 中有权限看到的非秘密业务数据。首批统一注册一个本地只读 Tool：
+
+```text
+query_company_system(resource, record_id?, work_date?, date?, view?, status?, from?, to?, cursor?, limit?)
+
+resource:
+  requirements | requirement
+  tasks | task
+  daily_reports | daily_report
+  department_daily_reports
+```
+
+知识仍使用 `get_current_user`、`search_knowledge` 和 `list_knowledge_documents`，不重复塞进统一 Tool。系统查询的具体权限与 Web 完全一致：员工可查自己可见的需求/任务和本人日报；只有组织 `manager` 能查自己部门的部门日报，且部门 ID 由服务端绑定。详情查询继续由 Business API 校验资源可见性，知道 UUID 不等于有权读取。
+
+```text
+DSH Agent
+  -> Runner 内 query_company_system
+  -> Runner 派生密钥签发 60 秒身份 JWT
+  -> Control Plane /internal/v1/agent-tools/query-company-system
+  -> 校验 tenant/user/runner/request + 活跃状态
+  -> 按白名单映射固定 Business API GET 路径
+  -> 签发 Business Actor Token
+  -> Business API 权限策略
+  -> PostgreSQL 最新业务数据
+```
+
+这条链路无需 RAG：需求、任务和日报是结构化业务数据，Web 修改成功后，Agent 下一次查询直接读到同一数据库中的最新结果，不维护第二份索引或同步队列。RAG/MCP 只负责知识文档检索；后续接入真实 RAG 不改变系统业务查询链路。
+
+首版明确禁止以下内容进入 Tool：账号密码、密码哈希、模型 URL 配置中的完整 API Key、内部服务 Token、Runner 派生密钥、MCP/RAG 凭据和其他用户秘密。首版也不允许 Agent 通过该 Tool 创建、修改、发布或删除需求、任务、日报；写操作继续在 Company Workbench 中由用户明确确认。Tool 调用和结果写入当前 DSH Session Event，便于历史恢复和问题追踪，但不得记录任何完整密钥。
 
 ## 7. Session 与上下文隔离
 
@@ -762,7 +800,7 @@ stopped -> starting -> ready -> busy -> idle -> stopping -> stopped
 | 资源组 | 主要能力 | 关键授权规则 |
 |---|---|---|
 | Identity | 当前用户、租户、角色、退出登录 | 身份来自服务端会话或受信任 Token |
-| Model Settings | 查询/修改模型 URL、模型名、参数和 API Key | Key 只允许写入、轮换、撤销和测试，不返回明文 |
+| Model Settings | 查询/修改模型 URL 和 API Key，发现可用模型目录 | Key 只允许写入、轮换、撤销和测试，不返回明文；模型 ID 不由用户手填 |
 | Sessions | 创建、列表、读取元数据、归档、继续会话 | 每次按 `tenant_id + user_id + session_id` 校验 |
 | Session Stream | 发送消息、接收事件、停止生成、断线恢复 | 获取 Session 写租约；通过 DSH 原生连接协议代理 |
 | Workspaces | 创建、列表、上传、下载和删除用户文件 | 客户端只能提交资源 ID，不能提交服务器路径 |
@@ -809,7 +847,7 @@ DSH 当前的 `/api` Host fence 以 loopback/trusted host 为信任边界，官�
 - 该补丁只允许包含导航入口和必要的品牌标识，不写入知识、任务、日报、权限或数据访问逻辑；
 - 补丁必须以独立 patch 文件保存，构建时应用，升级 DSH 时通过应用失败和 UI 烟雾测试显式暴露兼容性问题。
 
-P0 模型 URL、模型名和 API Key 的唯一可写入口是 Company Workbench Settings API。DSH Web 自带的 Credentials/高权限 Settings 写入入口应隐藏或由 Gateway 拒绝，防止出现公司数据库和用户卷两套互相覆盖的配置。阶段 0 开发调试可临时使用官方设置页，但不作为 P0 用户流程。
+P0 模型 URL 和 API Key 的唯一可写入口是 Company Workbench Settings API。Control Plane 保存前请求该 Provider 的 `GET /models`，持久化完整模型目录并物化到 DSH Settings；DSH Web 只通过官方原生模型选择器选择当前会话模型。DSH Web 自带的 Credentials/高权限 Settings 写入入口应隐藏或由 Gateway 拒绝，防止出现公司数据库和用户卷两套互相覆盖的配置。阶段 0 开发调试可临时使用官方设置页，但不作为 P0 用户流程。
 
 业务数据必须保持单一权威来源：
 
@@ -912,7 +950,7 @@ Runner 必须验证签名、`audience`、过期时间、`runner_id` 以及请求
 │   ├── 我的日报
 │   └── 部门日报（主管）
 └── 设置 / 管理
-    ├── 模型 URL、模型名、API Key
+    ├── 模型 URL、API Key、自动发现的模型目录
     └── 用户、部门和 Runner（admin）
 ```
 
@@ -928,7 +966,7 @@ Runner 必须验证签名、`audience`、过期时间、`runner_id` 以及请求
 - 知识检索引用，点击可查看文件名、分类和引用片段；
 - 停止生成、断线重连、失败重试和中断状态。
 
-P0 的固定 Profile 为了保护本地 Credentials 会暂时禁用高风险 Tool，但验收不应因此简化成只支持纯文本；fake `search_knowledge` 的 Tool 调用、结果和引用必须可见并写入 Session。待公司 Credentials Provider 完成后，再接入真实知识 MCP 并恢复经审核的其他 DSH Tool 能力。
+P0 的固定 Profile 为了保护本地 Credentials 会暂时禁用高风险 Tool，但验收不应因此简化成只支持纯文本；fake `search_knowledge` 的 Tool 调用、结果和引用，以及只读 `query_company_system` 的调用和业务结果，都必须可见并写入 Session。待公司 Credentials Provider 完成后，再接入真实知识 MCP 并恢复经审核的其他 DSH Tool 能力。
 
 会话窗口至少支持新建、打开和保留全部历史；重命名、归档和按标题搜索先核对官方 Web 已有能力，缺失项不通过大规模 fork 补齐，而是按业务必要性在 Company Session API 或后续自研对话页实现。首版不提供硬删除。任何会话的重新打开都必须从权威 Session Event 恢复全部历史，而不是只显示数据库摘要。
 
@@ -1224,7 +1262,7 @@ Wave 5（P0 后，复用 company-web 工作槽）:
 | `web_sessions` | Session Token 哈希、`user_id`、认证时间、活动/绝对过期、撤销时间 | PostgreSQL；Redis 缓存 |
 | `departments` | `tenant_id`、名称、状态 | PostgreSQL |
 | `department_members` | `department_id + user_id`、`org_role(manager/member)` | PostgreSQL |
-| `model_configs` | `user_id`、provider、base URL、model、参数、`config_version` | PostgreSQL |
+| `model_configs` | `user_id`、provider、base URL、默认 `model`、完整 `models[]`、参数、`config_version` | PostgreSQL |
 | `secrets` | owner、purpose、ciphertext、key version、状态 | PostgreSQL + KMS/Vault |
 | `sessions` | `session_id`、owner、`workspace_id`、标题、状态、最后事件位置/时间 | PostgreSQL；事件正文在用户卷 |
 | `workspaces` | `workspace_id`、`tenant_id`、`user_id`、逻辑名称、存储引用 | PostgreSQL + 用户卷/对象存储 |
@@ -1279,7 +1317,7 @@ Wave 5（P0 后，复用 company-web 工作槽）:
 ### 14.1 P0 主链路验收
 
 - admin 可以创建 `member` 账号，员工能用临时密码登录并修改密码；
-- 员工可以保存一个 OpenAI-compatible 模型 URL、模型名和 API Key，查询接口不返回完整 Key；
+- 员工只填写 OpenAI-compatible 模型 URL 和 API Key；系统发现、去重并保存全部可用模型，查询接口不返回完整 Key；
 - 员工访问 `/chat` 时只会被路由到自己 Runner 的 DSH Web，未登录、停用账号和伪造 Runner/Session ID 均被拒绝；
 - DSH Web 可跳转到公司 Workbench，Workbench 也可返回对话，入口补丁不包含业务数据逻辑；
 - 员工创建 Session 并发送消息后，系统按需启动该员工的 Runner；
@@ -1289,6 +1327,9 @@ Wave 5（P0 后，复用 company-web 工作槽）:
 - 打开任意窗口可恢复全部消息、Tool/错误事件和知识引用；
 - 两个测试平台用户看到同一批 fake 公司知识，但只会命中各自的 fake 个人知识，回答展示可追溯 fixture 引用；
 - 调用 `search_knowledge` 时模型无法指定或伪造 `user_id`，用户 A 无法命中用户 B 的个人 fixtures；
+- 调用 `query_company_system` 时，Agent 可查询当前用户有权查看的需求、任务、本人日报；主管可查询本部门日报，普通成员和跨部门主管不能越权；
+- 需求、任务或日报通过 Web 修改后，Agent 下一次查询从同一 Business API/PostgreSQL 返回最新数据，不依赖 RAG 或异步复制；
+- `query_company_system` 只允许白名单 GET 查询，模型不能提交身份、部门、URL、Header、Token，也不能通过对话修改、发布或删除业务记录；
 - Session Event 和 Workspace 写入该员工目录，停止并重建 Runner 后仍可继续对话；
 - 测试用户 A 和 B 不能读取、路由或挂载到对方的 Session、Workspace、模型配置和个人知识；
 - 浏览器响应、应用日志、Session Event 和 Tool 结果中不出现完整模型 API Key；fake 模式不创建或要求 RAG PAT；
@@ -1304,6 +1345,7 @@ Wave 5（P0 后，复用 company-web 工作槽）:
 - 员工可创建/提交、编辑、AI 改写和软删除自己日报，AI 改写不会自动发布；
 - 主管可查看本部门成员今日日报和未提交状态，日期范围/成员/状态筛选正确；
 - 跨部门主管和普通成员调用 API 时不能越权查看他人日报或管理他人任务。
+- Agent 与 Workbench 使用相同的业务权限和结果语义；Agent 查询结果不包含密码、完整模型 Key、内部 Token 或其他秘密字段。
 
 ### 14.3 扩展与上线验收
 
@@ -1345,14 +1387,49 @@ Wave 5（P0 后，复用 company-web 工作槽）:
 
 P0 用户卷固定使用 Runner 宿主机本地目录 `/data/dsh-users/<user_id>`，根路径可配置，代码只持久化 `storage_ref`；替换共享存储是后续部署演进。fake `KnowledgeToolContext` 固定从 Runner 身份绑定用户，Tool 参数不能包含用户字段。Company Knowledge API 与 Tool v1 已由机器可读契约冻结。
 
-以下事项推迟到开发交付后的真实 MCP 接入，不阻塞当前工作：
+每用户 PAT 绑定、密文物化和下次访问自动刷新 Runner 已完成。剩余上线工作为：
 
-- 平台用户与 RAG 员工的一对一绑定、PAT 密文物化/撤销，以及账号停用时的联动；
+- 实现 PAT 撤销运维命令，并补齐平台账号停用时与 RAG Token 的联动；
 - 真实 RAG 开放的文件类型、单文件大小、OCR 配置和知识治理权限；
 - 真实 MCP 的 ACL 绕过、稳定性、额外延迟、错误恢复和版本升级测试；
 - 是否继续直接使用 MCP，或因已复现的兼容问题增加 Host Tool Adapter。
 
-MCP 生命周期、同用户多并发 Session、上游升级兼容性、集中 Session Provider 和高可用在 P0 主链路通过后再验证。
+同用户多并发 Session、上游升级兼容性、集中 Session Provider 和高可用仍需后续验证。
+
+### 15.1 P4 生产基线推进状态（2026-08-23）
+
+当前已经新增不依赖真实 MCP 的生产化第一批基线：
+
+- `deploy/compose.production.yaml` 与开发 Compose 分离，常驻服务固定 `NODE_ENV=production`，不包含 fixture seed，Business Repository 固定 PostgreSQL，Redis 开启 AOF；
+- Knowledge 和 Automation 新增显式 `disabled` 模式。生产预验收可以关闭这两项并继续验证登录、模型、DSH 对话、Session、Runner、任务、日报和 `query_company_system`；被关闭能力统一返回 503，不允许回退 fake/stub；
+- 空数据库通过一次性 Platform Bootstrap 创建首个本地管理员，重复执行和非空平台均失败，初始密码强制首次登录修改；
+- 生产配置检查使用 Docker Compose 解析后的结构化 JSON，验证无 seed、无 fake/stub、无开发迁移、Redis 持久化、端口和 Docker Socket 边界；
+- PostgreSQL 与 Runner 用户目录提供停写窗口备份/恢复脚本，备份带 SHA-256 manifest；恢复要求显式替换数据库确认和空 Runner 目标目录；
+- `dsh-lock.json` 固定 DSH commit、tag、package version、补丁和 11 个允许修改的上游文件，候选 DSH checkout 可在不改 submodule 的情况下执行补丁预检。
+
+这批能力只把“不接 MCP 的预生产环境”从开发 fake 中分离出来，不代表已经完成正式上线。P4 仍需完成集中指标/告警、生产 TLS/密钥注入、容量与故障测试，并在独立恢复环境用包含历史 Session 和用户工作区的代表性数据重复备份恢复演练。完整知识能力上线仍需通过 14.4 的真实 MCP 验收。
+
+### 15.2 业务自动化直连模型（2026-08-24）
+
+需求拆分、任务审核和日报 AI 改写属于一次性、无会话状态的结构化生成，不通过 DSH Runner 执行。Business API 仍通过内部自动化契约创建和轮询运行；Control Plane 的 `ModelAutomationExecutor` 根据 `actor_user_id` 读取该用户已经保存的 OpenAI-compatible URL、模型名和加密 API Key，临时解密后直接请求 `/chat/completions`。这样不会为一次日报润色启动 Runner，也不会把用户密钥下发给 Business API。
+
+后台按 `purpose` 维护固定 Prompt，并对模型结果执行目的对应的结构校验。当前三个 purpose 是 `task_split`、`task_review` 和 `daily_rewrite`；模型输出只形成子任务草稿、辅助审核意见或日报改写预览，仍需用户确认后才能写入或发布业务事实。DSH Runner 继续只承担有完整 Session、历史、Tool、Skill 或 MCP 上下文的 Agent 对话，因此这条能力不增加 DSH 上游升级的融合面。
+
+### 15.3 模型目录自动发现（2026-08-24）
+
+Workbench 模型设置页只接受 `API Base URL` 和 `API Key`。保存和“测试连接”均由 Control Plane 携带新提交的 Key，或在 Key 留空时解密复用已保存的 Key，请求 `{baseUrl}/models`；只接受 OpenAI-compatible 的 `data[].id`，过滤空值、去重并按 ID 排序。发现失败、响应无效或目录为空时保存返回明确错误，原生效配置、凭据和 Runner 不变。
+
+完整 `models[]` 与内部默认 `model` 同时保存在 `platform.model_configs` 和配置暂存表中，Runner 重建不依赖再次访问模型服务。原默认模型仍存在时继续沿用，否则自动使用发现目录第一项。物化器将同一个 Company Provider 下的全部模型写入 DSH `llm-pi-ai.providers.company-model.models`，并用 `agent-default-model` 指向内部默认模型；官方 DSH Web 的原生模型选择器负责对话 Session 的具体选择，不新增公司补丁或自研对话模型选择控件。
+
+需求拆分、任务审核和日报改写等无状态自动化仍读取内部默认 `model`，不会因对话 Session 选择其他模型而改变。模型目录只在用户测试或保存配置时访问上游，普通进入设置页和 Runner 重启均读取 PostgreSQL 中已保存的目录。
+
+### 15.4 每用户 Remote MCP 调联（2026-08-28）
+
+Control Plane 已实现租户级 MCP Provider 和用户级 RAG 身份绑定。`deploy/scripts/provision-remote-mcp-user.mjs` 从本地 `config.toml` 读取指定 MCP Server 的 HTTPS URL 和 Bearer PAT，用 `MODEL_SECRET_KEY_BASE64` 加密 PAT 后写入 Platform PostgreSQL，不打印密钥也不产生明文临时文件。重复执行相同绑定不增加配置版本。
+
+Runner 物化时使用模型版本、Knowledge Provider 版本和 RAG 用户绑定版本之和作为聚合版本。任意一项单调递增都会在下次 `/chat` 访问时重新物化配置并替换旧 Runner；不再要求管理员进入用户目录修改 `.env`。租户 MCP URL/白名单变化会刷新受影响的用户，单个 PAT 轮换只刷新该用户。
+
+`wdl` 运行态 smoke 已通过：平台账号可登录，专属 Runner 健康，`company` preset 可成功创建 Session，`.env` 权限为 `0600`，Cordis 使用官方 MCP Client 且不包含 PAT 明文，同一 PAT 的 `get_current_user` 返回 `wdl` 员工身份。
 
 ## 16. 参考位置
 
@@ -1372,7 +1449,7 @@ MCP 生命周期、同用户多并发 Session、上游升级兼容性、集中 S
 - [`dsh-web-ui` 参考仓库审阅基线](https://github.com/zhu1090093659/dsh-web-ui/tree/878a66b5fbc3b32fad199bfc9cbac2dcd05d826d)
 - [`dsh-task-board` 源码（仅作交互与实现参考）](https://github.com/zhu1090093659/dsh-web-ui/tree/878a66b5fbc3b32fad199bfc9cbac2dcd05d826d/packages/dsh-task-board)
 
-后续真实接入的目标 RAG 基线位于 `/Users/freshpi/Documents/freshpi-ai/rag-mcp`，关键入口为 `src/rag_mcp/server.py`、`src/rag_mcp/runtime.py`、`src/rag_mcp/mcp/tools.py`、`src/rag_mcp/services/knowledge.py` 和 `src/rag_mcp/auth/provider.py`。当前开发只依据这些接口冻结契约，不连接或修改该仓库。
+目标 RAG 基线位于 `/Users/freshpi/Documents/freshpi-ai/rag-mcp`，关键入口为 `src/rag_mcp/server.py`、`src/rag_mcp/runtime.py`、`src/rag_mcp/mcp/tools.py`、`src/rag_mcp/services/knowledge.py` 和 `src/rag_mcp/auth/provider.py`。当前新平台已连接其运行中的 Streamable HTTP MCP，但没有修改或复制该独立仓库源码。
 
 ## 附录 A. 设计上下文摘要
 

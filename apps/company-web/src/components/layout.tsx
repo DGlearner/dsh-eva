@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
-  Bot,
   ClipboardList,
   FileText,
   LayoutDashboard,
@@ -44,7 +43,7 @@ const navGroups: Array<{ label: string; items: NavigationItem[] }> = [
   {
     label: '日报',
     items: [
-      { to: '/workbench/daily-reports', label: '我的日报', icon: FileText },
+      { to: '/workbench/daily-reports', label: '日报填写', icon: FileText },
       { to: '/workbench/daily-reports/department', label: '部门日报', icon: Users, manager: true },
     ],
   },
@@ -125,18 +124,25 @@ export function WorkbenchLayout() {
             return (
               <div className={styles.navGroup} key={group.label}>
                 <p className={styles.navLabel}>{group.label}</p>
-                {items.map(({ to, label, icon: Icon }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    className={({ isActive }) =>
-                      `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
-                    }
-                  >
-                    <Icon aria-hidden="true" />
-                    <span>{label}</span>
-                  </NavLink>
-                ))}
+                {items.map(({ to, label, icon: Icon }) =>
+                  to === '/chat' ? (
+                    <a key={to} href={to} className={styles.navLink}>
+                      <Icon aria-hidden="true" />
+                      <span>{label}</span>
+                    </a>
+                  ) : (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      className={({ isActive }) =>
+                        `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
+                      }
+                    >
+                      <Icon aria-hidden="true" />
+                      <span>{label}</span>
+                    </NavLink>
+                  ),
+                )}
               </div>
             );
           })}
@@ -165,8 +171,13 @@ export function WorkbenchLayout() {
         <header className={styles.topbar}>
           <span className={styles.breadcrumbs}>工作台 / {crumb}</span>
           <div className={styles.topActions}>
-            <span className={styles.muted}>{context.user.display_name}</span>
-            <Bot size={18} aria-hidden="true" />
+            <div className={styles.topIdentity}>
+              <strong>{context.user.display_name}</strong>
+              <span>{context.department?.name ?? '平台管理'}</span>
+            </div>
+            <span className={styles.avatar} aria-hidden="true">
+              {context.user.display_name.slice(0, 1)}
+            </span>
           </div>
         </header>
         <div className={styles.content}>

@@ -1,6 +1,16 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, FileUp, RefreshCw, RotateCcw, Search } from 'lucide-react';
+import {
+  Archive,
+  CircleCheck,
+  FileText,
+  FileUp,
+  FolderOpen,
+  HardDrive,
+  RefreshCw,
+  RotateCcw,
+  Search,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -118,6 +128,10 @@ export function KnowledgePage({ scope }: { scope: Schema<'KnowledgeScope'> }) {
       ) ?? [],
     [documents.data, search],
   );
+  const readyCount = documents.data?.items.filter((item) => item.status === 'ready').length ?? 0;
+  const totalSize = documents.data?.items.reduce((sum, item) => sum + item.size_bytes, 0) ?? 0;
+  const categoryCount = (code: string | null) =>
+    documents.data?.items.filter((item) => item.category === code).length ?? 0;
 
   return (
     <div className={styles.page}>
@@ -138,6 +152,61 @@ export function KnowledgePage({ scope }: { scope: Schema<'KnowledgeScope'> }) {
           </Button>
         }
       />
+      {scope === 'company' ? (
+        <section className={styles.knowledgeOverview} aria-label="公司知识分类">
+          <button
+            className={`${styles.categoryCard} ${category === '' ? styles.categoryCardActive : ''}`}
+            onClick={() => setCategory('')}
+          >
+            <span className={styles.categoryIcon}>
+              <FolderOpen aria-hidden="true" />
+            </span>
+            <span>
+              <strong>全部文件</strong>
+              <small>{documents.data?.items.length ?? 0} 个文件</small>
+            </span>
+          </button>
+          {categories.data?.map((item) => (
+            <button
+              className={`${styles.categoryCard} ${category === item.code ? styles.categoryCardActive : ''}`}
+              onClick={() => setCategory(item.code ?? '')}
+              key={item.code}
+            >
+              <span className={styles.categoryIcon}>
+                <FolderOpen aria-hidden="true" />
+              </span>
+              <span>
+                <strong>{item.name}</strong>
+                <small>{categoryCount(item.code)} 个文件</small>
+              </span>
+            </button>
+          ))}
+        </section>
+      ) : (
+        <section className={styles.knowledgeMetrics} aria-label="个人知识概览">
+          <div className={styles.knowledgeMetric}>
+            <FileText aria-hidden="true" />
+            <span>
+              <strong>{documents.data?.items.length ?? 0}</strong>
+              <small>全部文件</small>
+            </span>
+          </div>
+          <div className={styles.knowledgeMetric}>
+            <CircleCheck aria-hidden="true" />
+            <span>
+              <strong>{readyCount}</strong>
+              <small>当前可用</small>
+            </span>
+          </div>
+          <div className={styles.knowledgeMetric}>
+            <HardDrive aria-hidden="true" />
+            <span>
+              <strong>{formatBytes(totalSize)}</strong>
+              <small>已用空间</small>
+            </span>
+          </div>
+        </section>
+      )}
       {(notice || command.error || upload.error) && (
         <InlineAlert title={command.error || upload.error ? '操作未完成' : '状态已更新'}>
           {command.error || upload.error ? problemMessage(command.error ?? upload.error) : notice}
@@ -146,7 +215,7 @@ export function KnowledgePage({ scope }: { scope: Schema<'KnowledgeScope'> }) {
       {showUpload && (
         <section className={styles.panel}>
           <div className={styles.panelHeader}>
-            <h2>模拟上传</h2>
+            <h2>添加知识文件</h2>
           </div>
           <div className={styles.panelBody}>
             <form
@@ -249,7 +318,7 @@ export function KnowledgePage({ scope }: { scope: Schema<'KnowledgeScope'> }) {
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的文件" description="调整筛选条件，或上传一个文件。" />
       ) : (
-        <section className={styles.panel}>
+        <section className={`${styles.panel} ${styles.dataPanel}`}>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
@@ -268,8 +337,15 @@ export function KnowledgePage({ scope }: { scope: Schema<'KnowledgeScope'> }) {
                 {filtered.map((item) => (
                   <tr key={item.id}>
                     <td>
-                      <div className={styles.tableTitle}>{item.title}</div>
-                      <span className={styles.muted}>{item.file_name}</span>
+                      <div className={styles.fileCell}>
+                        <span className={styles.fileIcon}>
+                          <FileText aria-hidden="true" />
+                        </span>
+                        <span>
+                          <span className={styles.tableTitle}>{item.title}</span>
+                          <span className={styles.muted}>{item.file_name}</span>
+                        </span>
+                      </div>
                     </td>
                     <td>
                       {categories.data?.find((entry) => entry.code === item.category)?.name ??

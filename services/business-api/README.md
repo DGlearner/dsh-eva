@@ -46,14 +46,16 @@ Operation polling applies the local operation status and task review result in o
 | `ACTOR_TOKEN_ISSUER`                | `company-control-plane` | Expected short-lived Actor Token issuer                     |
 | `BUSINESS_REPOSITORY`               | `fake`                  | `fake` or `postgres`; PostgreSQL requires `DATABASE_URL`    |
 | `DATABASE_URL`                      | none                    | Required PostgreSQL URL in `postgres` mode                  |
-| `AUTOMATION_PROVIDER`               | `fake`                  | `fake` or `internal`                                        |
+| `AUTOMATION_PROVIDER`               | `fake`                  | `disabled`, `fake`, or `internal`                           |
 | `INTERNAL_AUTOMATION_BASE_URL`      | none                    | Required for `internal` automation                          |
 | `INTERNAL_AUTOMATION_SERVICE_TOKEN` | none                    | Required for `internal` automation                          |
-| `KNOWLEDGE_PROVIDER`                | `fake`                  | `remote-mcp` is reserved and rejected; there is no fallback |
+| `KNOWLEDGE_PROVIDER`                | `fake`                  | `disabled`; `remote-mcp` remains reserved and rejected      |
 
-Production startup fails if the repository, Knowledge, or Automation selection is fake. Unknown
-values also fail validation. `remote-mcp` is intentionally rejected in every environment until a
-later integration implements it; it never falls back to fixture data.
+Production startup fails if the repository, Knowledge, or Automation selection is fake. `disabled`
+is the fail-closed production-like verification mode: the remaining business routes stay available,
+while the disabled capability returns `503 dependency_unavailable`. Unknown values also fail
+validation. `remote-mcp` is intentionally rejected in every environment until a later integration
+implements it; it never falls back to fixture data.
 
 ## Database
 

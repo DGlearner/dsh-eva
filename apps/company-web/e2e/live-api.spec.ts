@@ -40,12 +40,15 @@ test('member retains CSRF mutations and personal knowledge isolation', async ({ 
 
   await page.goto('/workbench/daily-reports');
   await page.getByLabel('工作日').fill('2026-08-22');
-  await page.getByLabel('今日完成').fill('完成真实 Gateway 与 Business API 联调。');
-  await page.getByLabel('下一步计划').fill('继续执行 integration/business 回归。');
+  await page
+    .getByLabel('日报正文')
+    .fill('完成真实 Gateway 与 Business API 联调。下一步继续执行集成回归。');
   await page.getByRole('button', { name: '保存草稿' }).click();
   await expect(page.getByText('日报草稿已保存。')).toBeVisible();
 
   await page.reload();
   await page.getByLabel('工作日').fill('2026-08-22');
-  await expect(page.getByLabel('今日完成')).toHaveValue('完成真实 Gateway 与 Business API 联调。');
+  await expect(page.getByLabel('日报正文')).toHaveValue(
+    '完成真实 Gateway 与 Business API 联调。下一步继续执行集成回归。',
+  );
 });

@@ -28,6 +28,7 @@ export class DockerodeRunnerPort implements DockerRunnerPort {
         `COMPANY_USER_ID=${spec.userId}`,
         `COMPANY_RUNNER_ID=${spec.runnerId}`,
         `COMPANY_RUNNER_IDENTITY_SECRET_BASE64=${spec.identitySecretBase64}`,
+        `COMPANY_AGENT_TOOL_GATEWAY_URL=${spec.agentToolGatewayUrl}`,
         `COMPANY_RUNNER_AUTHORITY=${spec.name}:${spec.internalPort}`,
         `COMPANY_RUNNER_PORT=${spec.internalPort}`,
       ],

@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 import type {
   AutomationResult,
@@ -176,6 +177,8 @@ export const dailyReports = business.table(
     userId: uuid('user_id').notNull(),
     departmentId: uuid('department_id').notNull(),
     workDate: date('work_date', { mode: 'string' }).notNull(),
+    scope: text('scope').notNull(),
+    taskId: uuid('task_id'),
     content: jsonb('content').$type<DailyReportContent>().notNull(),
     status: text('status').notNull(),
     publishedAt: timestamp('published_at', { withTimezone: true, mode: 'string' }),
@@ -185,11 +188,12 @@ export const dailyReports = business.table(
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
   (table) => [
-    uniqueIndex('daily_reports_tenant_user_date_uq').on(
-      table.tenantId,
-      table.userId,
-      table.workDate,
-    ),
+    uniqueIndex('daily_reports_tenant_user_date_scope_uq')
+      .on(table.tenantId, table.userId, table.workDate, table.scope)
+      .where(sql`${table.taskId} is null`),
+    uniqueIndex('daily_reports_tenant_user_date_task_uq')
+      .on(table.tenantId, table.userId, table.workDate, table.taskId)
+      .where(sql`${table.scope} = 'task'`),
   ],
 );
 

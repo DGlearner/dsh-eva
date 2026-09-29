@@ -18,6 +18,7 @@ const egressNetwork = `${project}-runner-egress`;
 const runnerImage = `${project}-runner:latest`;
 const controlPlaneImage = `${project}-control-plane:latest`;
 const runnerManagerImage = `${project}-runner-manager:latest`;
+const businessApiImage = `${project}-business-api:latest`;
 const password = 'p0-password-123';
 const tenantId = '00000000-0000-4000-8000-000000000001';
 const userAId = '00000000-0000-4000-8000-000000001003';
@@ -59,6 +60,7 @@ beforeAll(async () => {
     ...process.env,
     P0_CONTROL_PLANE_IMAGE: controlPlaneImage,
     P0_RUNNER_MANAGER_IMAGE: runnerManagerImage,
+    P0_BUSINESS_API_IMAGE: businessApiImage,
     P0_RUNNER_IMAGE: runnerImage,
     P0_DATA_ROOT: dataRoot,
     P0_DOCKER_GID: dockerGid,
@@ -72,6 +74,7 @@ beforeAll(async () => {
   await buildImage(runnerImage, 'runtimes/dsh-runner/Dockerfile');
   await buildImage(controlPlaneImage, 'services/control-plane/Dockerfile');
   await buildImage(runnerManagerImage, 'services/runner-manager/Dockerfile');
+  await buildImage(businessApiImage, 'services/business-api/Dockerfile');
   await compose(['up', '-d', '--wait', 'postgres', 'redis']);
   await compose(['--profile', 'ops', 'run', '--rm', 'migrate']);
   await compose([
@@ -85,7 +88,33 @@ beforeAll(async () => {
     'node',
     'packages/db/dist/seed-platform.js',
   ]);
-  await compose(['up', '-d', 'runner-manager', 'control-plane', 'gateway']);
+  await compose([
+    '--profile',
+    'ops',
+    'run',
+    '--rm',
+    '-e',
+    'NODE_ENV=development',
+    '-e',
+    'BUSINESS_INCLUDE_DEV_MIGRATIONS=true',
+    'migrate',
+    'node',
+    'packages/db/dist/migrate-business.js',
+  ]);
+  await compose([
+    '--profile',
+    'ops',
+    'run',
+    '--rm',
+    '-e',
+    'NODE_ENV=development',
+    '-e',
+    'BUSINESS_ENABLE_FIXTURE_SEED=true',
+    'migrate',
+    'node',
+    'packages/db/dist/seed-business.js',
+  ]);
+  await compose(['up', '-d', 'business-api', 'runner-manager', 'control-plane', 'gateway']);
   baseUrl = `http://127.0.0.1:${gatewayPort}`;
   await waitFor(
     async () => {
@@ -189,8 +218,13 @@ describe('P0 Docker platform boundary', () => {
       waitForHistory(userB, sessionB),
     ]);
     for (const history of histories) assertKnowledgeHistory(history);
+
+    const systemSession = String((await rpc(userA, 'session.create', {})).sessionId);
+    await prompt(userA, systemSession, '查询我未完成的任务');
+    const systemHistory = await waitForHistory(userA, systemSession);
+    assertSystemQueryHistory(systemHistory);
     await waitFor(() => frames.length > 0, 30_000, 'No real WebSocket event was received');
-    expect(modelRequests.length).toBeGreaterThanOrEqual(6);
+    expect(modelRequests.length).toBeGreaterThanOrEqual(8);
     expect(modelRequests.some((request) => request.authorization === 'Bearer p0-fixture-key')).toBe(
       true,
     );
@@ -447,6 +481,27 @@ function assertKnowledgeHistory(historyValue: RpcValue): void {
   expect(toolResult?.event?.data?.citations?.length).toBeGreaterThan(0);
 }
 
+function assertSystemQueryHistory(historyValue: RpcValue): void {
+  const events = Array.isArray(historyValue.events) ? historyValue.events : [];
+  const toolResult = events.find((item) => {
+    const event = (item as { event?: { type?: string; data?: { tool?: string } } }).event;
+    return event?.type === 'company/tool-result' && event.data?.tool === 'query_company_system';
+  }) as
+    | {
+        event?: {
+          data?: { output?: { items?: Array<{ title?: string; status?: string }> } };
+          ignorable?: boolean;
+        };
+      }
+    | undefined;
+  expect(toolResult?.event?.ignorable).toBe(true);
+  expect(toolResult?.event?.data?.output?.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ title: '实现任务列表', status: 'in_progress' }),
+    ]),
+  );
+}
+
 function openEventsSocket(cookie: string): Promise<WebSocket> {
   return new Promise((resolveSocket, rejectSocket) => {
     const socket = new WebSocket(`ws://127.0.0.1:${gatewayPort}/chat/api/events.mux`, {
@@ -659,6 +714,7 @@ async function startModelServer(
     const messages = Array.isArray(body.messages) ? body.messages : [];
     const tools = Array.isArray(body.tools) ? body.tools : [];
     const afterTool = (messages.at(-1) as { role?: string } | undefined)?.role === 'tool';
+    const systemQuery = JSON.stringify(messages).includes('查询我未完成的任务');
     response.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
@@ -681,12 +737,16 @@ async function startModelServer(
                   id: `call-${crypto.randomUUID()}`,
                   type: 'function',
                   function: {
-                    name: 'search_knowledge',
-                    arguments: JSON.stringify({
-                      query: '员工出差住宿报销上限',
-                      category: 'company-information',
-                      top_k: 3,
-                    }),
+                    name: systemQuery ? 'query_company_system' : 'search_knowledge',
+                    arguments: JSON.stringify(
+                      systemQuery
+                        ? { resource: 'tasks', view: 'incomplete', limit: 20 }
+                        : {
+                            query: '员工出差住宿报销上限',
+                            category: 'company-information',
+                            top_k: 3,
+                          },
+                    ),
                   },
                 },
               ],

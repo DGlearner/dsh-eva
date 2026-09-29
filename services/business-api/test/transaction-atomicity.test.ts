@@ -133,6 +133,8 @@ describe('Business command transaction atomicity', () => {
         actors.devA.tenantId,
         actors.devA.userId,
         '2026-08-19',
+        'department',
+        null,
       ),
     ).toBeNull();
   });
@@ -460,7 +462,13 @@ describe('Business command transaction atomicity', () => {
       ),
     ).toBeNull();
     expect(
-      await context.repository.getDailyReport(actors.devA.tenantId, actors.devA.userId, workDate),
+      await context.repository.getDailyReport(
+        actors.devA.tenantId,
+        actors.devA.userId,
+        workDate,
+        'department',
+        null,
+      ),
     ).toMatchObject({ status: 'deleted', version: 2 });
   });
 

@@ -146,7 +146,272 @@ describe('DSH Gateway', () => {
       payload: envelope('host.describe', {}),
     });
     expect(response.statusCode).toBe(200);
-    expect(upstreamUrl).toBe('http://runner-a:3000/chat/api/host.describe');
+    expect(upstreamUrl).toBe('http://runner-a:3000/api/host.describe');
+  });
+
+  it('allows only the onboarding acknowledgement through the DSH settings boundary', async () => {
+    const fixture = createFixture();
+    const upstreamUrls: string[] = [];
+    const upstreamBodies: unknown[] = [];
+    registerDshGateway(fixture.app, {
+      repository: fixture.repository,
+      runnerLocator: fixedRunnerLocator(),
+      runnerIdentitySecret: Buffer.alloc(32, 4),
+      fetch: async (url, init) => {
+        upstreamUrls.push(String(url));
+        upstreamBodies.push(JSON.parse(String(init?.body)) as unknown);
+        return Response.json({
+          type: 'server-response',
+          rpcId: 'rpc-1',
+          result: { ok: true, value: { namespaces: [] } },
+        });
+      },
+    });
+    const headers = { cookie: `company_session=${fixture.token}` };
+
+    const described = await fixture.app.inject({
+      method: 'POST',
+      url: '/chat/api/settings.describe',
+      headers,
+      payload: envelope('settings.describe', {}),
+    });
+    const acknowledgement = {
+      ns: 'ui-onboarding',
+      ops: [{ op: 'set', path: ['welcomeNoticeVersion'], value: '2026-08-13.1' }],
+    };
+    const mutated = await fixture.app.inject({
+      method: 'POST',
+      url: '/chat/api/settings.mutate',
+      headers,
+      payload: envelope('settings.mutate', acknowledgement),
+    });
+
+    expect(described.statusCode).toBe(200);
+    expect(mutated.statusCode).toBe(200);
+    expect(upstreamUrls).toEqual([
+      'http://runner-a:3000/api/settings.describe',
+      'http://runner-a:3000/api/settings.mutate',
+    ]);
+    expect(upstreamBodies).toEqual([
+      envelope('settings.describe', {}),
+      envelope('settings.mutate', acknowledgement),
+    ]);
+  });
+
+  it('limits the DSH directory browser to the isolated user workspaces mount', async () => {
+    const fixture = createFixture();
+    const upstreamBodies: unknown[] = [];
+    registerDshGateway(fixture.app, {
+      repository: fixture.repository,
+      runnerLocator: fixedRunnerLocator(),
+      runnerIdentitySecret: Buffer.alloc(32, 4),
+      fetch: async (_url, init) => {
+        upstreamBodies.push(JSON.parse(String(init?.body)) as unknown);
+        return Response.json({
+          type: 'server-response',
+          rpcId: 'rpc-1',
+          result: { ok: true, value: {} },
+        });
+      },
+    });
+    const headers = { cookie: `company_session=${fixture.token}` };
+
+    for (const [method, payload] of [
+      ['host.listDirectory', {}],
+      ['host.listDirectory', { path: '/dsh-user/workspaces/project-a' }],
+      ['host.createDirectory', { path: '/dsh-user/workspaces', name: 'project-b' }],
+    ] as const) {
+      const response = await fixture.app.inject({
+        method: 'POST',
+        url: `/chat/api/${method}`,
+        headers,
+        payload: envelope(method, payload),
+      });
+      expect(response.statusCode).toBe(200);
+    }
+
+    expect(upstreamBodies).toEqual([
+      envelope('host.listDirectory', { path: '/dsh-user/workspaces' }),
+      envelope('host.listDirectory', { path: '/dsh-user/workspaces/project-a' }),
+      envelope('host.createDirectory', {
+        path: '/dsh-user/workspaces',
+        name: 'project-b',
+      }),
+    ]);
+  });
+
+  it('rejects every other DSH settings or credential operation before locating a runner', async () => {
+    const fixture = createFixture();
+    let located = 0;
+    registerDshGateway(fixture.app, {
+      repository: fixture.repository,
+      runnerLocator: {
+        ensure: async () => {
+          located += 1;
+          return fixedRunner();
+        },
+      },
+      runnerIdentitySecret: Buffer.alloc(32, 4),
+    });
+    const headers = { cookie: `company_session=${fixture.token}` };
+    const deniedRequests = [
+      ['settings.update', {}],
+      ['settings.replace', {}],
+      ['settings.openDocument', {}],
+      ['credentials.describe', {}],
+      ['credentials.set', {}],
+      ['host.listDirectory', { path: '/dsh-user' }],
+      ['host.listDirectory', { path: '/dsh-user/workspaces/../.company' }],
+      ['host.createDirectory', { path: '/dsh-user/workspaces', name: '../escape' }],
+      [
+        'settings.mutate',
+        {
+          ns: 'models',
+          ops: [{ op: 'set', path: ['providers'], value: {} }],
+        },
+      ],
+      [
+        'settings.mutate',
+        {
+          ns: 'ui-onboarding',
+          ops: [{ op: 'set', path: ['anotherField'], value: 'ignored' }],
+        },
+      ],
+      [
+        'settings.mutate',
+        {
+          ns: 'ui-onboarding',
+          ops: [{ op: 'unset', path: ['welcomeNoticeVersion'] }],
+        },
+      ],
+    ] as const;
+
+    for (const [method, payload] of deniedRequests) {
+      const response = await fixture.app.inject({
+        method: 'POST',
+        url: `/chat/api/${method}`,
+        headers,
+        payload: envelope(method, payload),
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json().code).toBe('dsh_method_denied');
+    }
+    expect(located).toBe(0);
+  });
+
+  it('proxies the read-only Cordis bootstrap namespace without opening other methods', async () => {
+    const fixture = createFixture();
+    const upstreamUrls: string[] = [];
+    registerDshGateway(fixture.app, {
+      repository: fixture.repository,
+      runnerLocator: fixedRunnerLocator(),
+      runnerIdentitySecret: Buffer.alloc(32, 4),
+      fetch: async (url) => {
+        upstreamUrls.push(String(url));
+        return Response.json({
+          type: 'server-response',
+          rpcId: 'rpc-1',
+          result: { ok: true, value: [] },
+        });
+      },
+    });
+
+    for (const method of [
+      'dynamicCordisRunner/inventory',
+      'dynamicCordisRunner/syncInspectManifest',
+    ]) {
+      const response = await fixture.app.inject({
+        method: 'POST',
+        url: `/chat/api/${method}`,
+        headers: { cookie: `company_session=${fixture.token}` },
+        payload: envelope(method, {}),
+      });
+      expect(response.statusCode).toBe(200);
+    }
+
+    const denied = await fixture.app.inject({
+      method: 'POST',
+      url: '/chat/api/dynamicCordisRunner/invoke',
+      headers: { cookie: `company_session=${fixture.token}` },
+      payload: envelope('dynamicCordisRunner/invoke', {}),
+    });
+
+    expect(denied.statusCode).toBe(403);
+    expect(upstreamUrls).toEqual([
+      'http://runner-a:3000/api/dynamicCordisRunner/inventory',
+      'http://runner-a:3000/api/dynamicCordisRunner/syncInspectManifest',
+    ]);
+  });
+
+  it('opens the official Web with an unconfigured runner before model setup', async () => {
+    const fixture = createFixture();
+    fixture.repository.modelConfigs.delete(userAId);
+    const preparedUsers: string[] = [];
+    const ensuredVersions: number[] = [];
+    registerDshGateway(fixture.app, {
+      repository: fixture.repository,
+      runnerLocator: {
+        ensure: async (input) => {
+          ensuredVersions.push(input.configVersion);
+          return fixedRunner();
+        },
+      },
+      runnerIdentitySecret: Buffer.alloc(32, 4),
+      prepareUnconfiguredRunner: async (user) => {
+        preparedUsers.push(user.id);
+        return 1;
+      },
+      fetch: async () =>
+        new Response('<!doctype html><title>Company DSH</title>', {
+          headers: { 'content-type': 'text/html' },
+        }),
+    });
+
+    const response = await fixture.app.inject({
+      method: 'GET',
+      url: '/chat',
+      headers: { cookie: `company_session=${fixture.token}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('Company DSH');
+    expect(preparedUsers).toEqual([userAId]);
+    expect(ensuredVersions).toEqual([1]);
+  });
+
+  it('prepares the aggregate Runner version for an already configured user', async () => {
+    const fixture = createFixture();
+    const preparedModels: Array<ModelConfigRecord | null> = [];
+    const ensuredVersions: number[] = [];
+    registerDshGateway(fixture.app, {
+      repository: fixture.repository,
+      runnerLocator: {
+        ensure: async (input) => {
+          ensuredVersions.push(input.configVersion);
+          return fixedRunner();
+        },
+      },
+      runnerIdentitySecret: Buffer.alloc(32, 4),
+      prepareRunner: async (_user, model) => {
+        preparedModels.push(model);
+        return 7;
+      },
+      fetch: async () =>
+        new Response('<!doctype html><title>Company DSH</title>', {
+          headers: { 'content-type': 'text/html' },
+        }),
+    });
+
+    const response = await fixture.app.inject({
+      method: 'GET',
+      url: '/chat',
+      headers: { cookie: `company_session=${fixture.token}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(preparedModels).toHaveLength(1);
+    expect(preparedModels[0]?.configVersion).toBe(1);
+    expect(ensuredVersions).toEqual([7]);
   });
 
   it('strips the public chat prefix when proxying DSH static and plugin assets', async () => {
@@ -280,6 +545,7 @@ function modelConfig(userId: string): ModelConfigRecord {
     userId,
     baseUrl: 'https://model.example/v1',
     model: 'fixture-model',
+    models: ['fixture-model'],
     temperature: 0.7,
     maxOutputTokens: null,
     apiKeyCiphertext: null,

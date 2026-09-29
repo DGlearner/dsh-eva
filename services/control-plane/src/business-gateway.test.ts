@@ -149,7 +149,12 @@ describe('Business Gateway', () => {
     const verified = await jwtVerify(
       authorization!.slice('Bearer '.length),
       new TextEncoder().encode(actorSecret),
-      { issuer: actorIssuer, audience: 'company-business-api', algorithms: ['HS256'] },
+      {
+        issuer: actorIssuer,
+        audience: 'company-business-api',
+        algorithms: ['HS256'],
+        currentDate: issuedAt,
+      },
     );
     expect(verified.protectedHeader).toMatchObject({ alg: 'HS256', typ: 'JWT' });
     expect(Object.keys(verified.payload).sort()).toEqual(

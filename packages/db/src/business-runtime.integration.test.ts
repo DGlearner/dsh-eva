@@ -2,6 +2,7 @@ import fixtureJson from '@company/test-fixtures/fixture-v1' with { type: 'json' 
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { bootstrapPlatform, type PlatformBootstrapResult } from './bootstrap-platform.js';
 import { migrateBusiness } from './migrate-business.js';
 import { seedBusinessFixtures, type BusinessFixture } from './seed-business.js';
 import { migratePlatform } from './migrate-platform.js';
@@ -16,6 +17,7 @@ describePostgres('Business migration and fixture runtime', () => {
   let ownsSchemas = false;
   let firstApplied: string[] = [];
   let firstSeed = { inserted: 0, expected: 0 };
+  let bootstrap: PlatformBootstrapResult;
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: databaseUrl });
@@ -32,6 +34,20 @@ describePostgres('Business migration and fixture runtime', () => {
     }
     ownsSchemas = true;
     await migratePlatform(databaseUrl!);
+    bootstrap = await bootstrapPlatform(databaseUrl!, {
+      tenantName: 'Bootstrap Test Company',
+      username: 'bootstrap-admin',
+      displayName: 'Bootstrap Administrator',
+      password: 'bootstrap-password',
+    });
+    await expect(
+      bootstrapPlatform(databaseUrl!, {
+        tenantName: 'Second Company',
+        username: 'second-admin',
+        displayName: 'Second Administrator',
+        password: 'second-password',
+      }),
+    ).rejects.toThrow(/only when tenants and users are empty/);
     firstApplied = await migrateBusiness(databaseUrl!, {
       includeDevelopment: true,
       nodeEnv: 'test',
@@ -55,9 +71,12 @@ describePostgres('Business migration and fixture runtime', () => {
   });
 
   it('applies each immutable migration once and safely repeats', async () => {
+    expect(bootstrap).toMatchObject({ username: 'bootstrap-admin' });
     expect(firstApplied).toEqual([
       '0001_business_v1.sql',
       '0002_business_guards.sql',
+      '0003_daily_report_scopes.sql',
+      '0004_model_automation_provider.sql',
       'dev/0001_business_fake_v1.sql',
       'dev/0002_fake_state_guards.sql',
     ]);
@@ -67,7 +86,7 @@ describePostgres('Business migration and fixture runtime', () => {
     const history = await pool.query<{ name: string; checksum: string }>(
       'select name, checksum from business.schema_migrations order by name',
     );
-    expect(history.rows).toHaveLength(4);
+    expect(history.rows).toHaveLength(6);
     expect(history.rows.every(({ checksum }) => /^[a-f0-9]{64}$/.test(checksum))).toBe(true);
   });
 

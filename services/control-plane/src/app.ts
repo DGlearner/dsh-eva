@@ -36,8 +36,14 @@ const CSRF_COOKIE = 'company_csrf';
 
 export type ModelProbeInput = {
   baseUrl: string;
-  model: string;
   apiKey: string | null;
+};
+
+export type ModelProbeResult = {
+  ok: boolean;
+  latencyMs: number;
+  errorCode: string | null;
+  models: string[];
 };
 
 export type UserConfigMaterializationStage = {
@@ -75,9 +81,7 @@ export type ControlPlaneOptions = {
   automationExecutor?: AutomationExecutor;
   loginLimiter?: FixedWindowLoginLimiter;
   validateModelUrl?: (value: string) => Promise<URL>;
-  modelProbe?: (
-    input: ModelProbeInput,
-  ) => Promise<{ ok: boolean; latencyMs: number; errorCode: string | null }>;
+  modelProbe?: (input: ModelProbeInput) => Promise<ModelProbeResult>;
   configMaterializer?: UserConfigMaterializer;
   runnerAdminClient?: RunnerAdminClient;
 };
@@ -135,15 +139,6 @@ function requiredInteger(body: Record<string, unknown>, key: string, minimum = 0
   return value as number;
 }
 
-function optionalInteger(body: Record<string, unknown>, key: string): number | null | undefined {
-  const value = body[key];
-  if (value === undefined || value === null) return value;
-  if (!Number.isInteger(value) || (value as number) < 1) {
-    throw new HttpProblem(400, 'invalid_request', `${key} must be null or a positive integer`);
-  }
-  return value as number;
-}
-
 function assertAdmin(context: AuthContext): void {
   if (context.user.platformRole !== 'admin') {
     throw new HttpProblem(403, 'admin_required', 'Platform administrator role is required');
@@ -196,6 +191,8 @@ function modelView(config: ModelConfigRecord) {
   return {
     base_url: config.baseUrl,
     model: config.model,
+    models: config.models,
+    model_count: config.models.length,
     temperature: config.temperature,
     max_output_tokens: config.maxOutputTokens,
     has_api_key: config.apiKeyCiphertext !== null,
@@ -224,7 +221,7 @@ function apiKeyHint(apiKey: string): string {
 async function defaultModelProbe(
   input: ModelProbeInput,
   validateUrl: (value: string) => Promise<URL>,
-) {
+): Promise<ModelProbeResult> {
   const startedAt = performance.now();
   try {
     let url = await validateUrl(input.baseUrl);
@@ -242,10 +239,39 @@ async function defaultModelProbe(
         url = await validateUrl(new URL(location, url).href);
         continue;
       }
+      if (!response.ok) {
+        return {
+          ok: false,
+          latencyMs: Math.round(performance.now() - startedAt),
+          errorCode: `upstream_${response.status}`,
+          models: [],
+        };
+      }
+      let payload: unknown;
+      try {
+        payload = (await response.json()) as unknown;
+      } catch {
+        return {
+          ok: false,
+          latencyMs: Math.round(performance.now() - startedAt),
+          errorCode: 'model_response_invalid',
+          models: [],
+        };
+      }
+      const models = parseModelCatalog(payload);
+      if (models.length === 0) {
+        return {
+          ok: false,
+          latencyMs: Math.round(performance.now() - startedAt),
+          errorCode: 'model_catalog_empty',
+          models: [],
+        };
+      }
       return {
-        ok: response.ok,
+        ok: true,
         latencyMs: Math.round(performance.now() - startedAt),
-        errorCode: response.ok ? null : `upstream_${response.status}`,
+        errorCode: null,
+        models,
       };
     }
   } catch {
@@ -255,7 +281,31 @@ async function defaultModelProbe(
     ok: false,
     latencyMs: Math.round(performance.now() - startedAt),
     errorCode: 'model_unreachable',
+    models: [],
   };
+}
+
+function parseModelCatalog(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+  const data = (payload as { data?: unknown }).data;
+  if (!Array.isArray(data)) return [];
+  return normalizeModelIds(
+    data.map((item) =>
+      item && typeof item === 'object' && !Array.isArray(item)
+        ? (item as { id?: unknown }).id
+        : null,
+    ),
+  );
+}
+
+function normalizeModelIds(values: unknown[]): string[] {
+  const models = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const normalized = value.trim();
+    if (normalized.length > 0 && normalized.length <= 200) models.add(normalized);
+  }
+  return [...models].sort((left, right) => left.localeCompare(right, 'en'));
 }
 
 export function buildControlPlane(options: ControlPlaneOptions): FastifyInstance {
@@ -464,13 +514,7 @@ export function buildControlPlane(options: ControlPlaneOptions): FastifyInstance
     const body = objectBody(request.body);
     const baseUrl = requiredString(body, 'base_url', 1, 2048);
     await validateModelUrl(baseUrl);
-    const model = requiredString(body, 'model', 1, 200);
     const expectedVersion = requiredInteger(body, 'expected_version');
-    const temperature = body.temperature === undefined ? 0.7 : Number(body.temperature);
-    if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
-      throw new HttpProblem(400, 'invalid_temperature', 'temperature must be between 0 and 2');
-    }
-    const maxOutputTokens = optionalInteger(body, 'max_output_tokens') ?? null;
     const apiKey = body.api_key;
     if (
       apiKey !== undefined &&
@@ -480,6 +524,29 @@ export function buildControlPlane(options: ControlPlaneOptions): FastifyInstance
     }
     const config = await repository.withUserConfigLock(context.user.id, async () => {
       const existing = await repository.getModelConfig(context.user.id);
+      const resolvedKey =
+        typeof apiKey === 'string'
+          ? apiKey
+          : existing?.apiKeyCiphertext
+            ? options.secretCipher.open(existing.apiKeyCiphertext)
+            : null;
+      const discovered = await modelProbe({ baseUrl, apiKey: resolvedKey });
+      if (!discovered.ok) {
+        throw new HttpProblem(
+          422,
+          discovered.errorCode ?? 'model_discovery_failed',
+          'Could not discover any models from this API URL and key',
+        );
+      }
+      const models = normalizeModelIds(discovered.models);
+      if (models.length === 0) {
+        throw new HttpProblem(
+          422,
+          'model_catalog_empty',
+          'Could not discover any models from this API URL and key',
+        );
+      }
+      const model = existing && models.includes(existing.model) ? existing.model : models[0]!;
       const now = new Date();
       const staged = await repository.stageModelConfig(
         {
@@ -487,8 +554,9 @@ export function buildControlPlane(options: ControlPlaneOptions): FastifyInstance
           userId: context.user.id,
           baseUrl,
           model,
-          temperature,
-          maxOutputTokens,
+          models,
+          temperature: existing?.temperature ?? 0.7,
+          maxOutputTokens: existing?.maxOutputTokens ?? null,
           apiKeyCiphertext:
             typeof apiKey === 'string'
               ? options.secretCipher.seal(apiKey)
@@ -505,7 +573,7 @@ export function buildControlPlane(options: ControlPlaneOptions): FastifyInstance
       let materialized: UserConfigMaterializationStage | undefined;
       let markerActivated = false;
       try {
-        const resolvedKey = staged.apiKeyCiphertext
+        const materializedKey = staged.apiKeyCiphertext
           ? options.secretCipher.open(staged.apiKeyCiphertext)
           : null;
         materialized = await materializer.stage({
@@ -515,7 +583,7 @@ export function buildControlPlane(options: ControlPlaneOptions): FastifyInstance
           username: context.user.username,
           displayName: context.user.displayName,
           config: staged,
-          apiKey: resolvedKey,
+          apiKey: materializedKey,
         });
         await options.runnerAdminClient?.stopForUser?.(
           context.user.id,
@@ -554,7 +622,12 @@ export function buildControlPlane(options: ControlPlaneOptions): FastifyInstance
       resourceType: 'model_config',
       resourceId: config.id,
       result: 'success',
-      details: { base_url: baseUrl, model, api_key_changed: typeof apiKey === 'string' },
+      details: {
+        base_url: baseUrl,
+        default_model: config.model,
+        model_count: config.models.length,
+        api_key_changed: typeof apiKey === 'string',
+      },
     });
     return modelView(config);
   });
@@ -564,7 +637,6 @@ export function buildControlPlane(options: ControlPlaneOptions): FastifyInstance
     const body = objectBody(request.body);
     const baseUrl = requiredString(body, 'base_url', 1, 2048);
     await validateModelUrl(baseUrl);
-    const model = requiredString(body, 'model', 1, 200);
     const suppliedKey = body.api_key;
     if (suppliedKey !== undefined && suppliedKey !== null && typeof suppliedKey !== 'string') {
       throw new HttpProblem(400, 'invalid_api_key', 'api_key must be a string or null');
@@ -576,8 +648,14 @@ export function buildControlPlane(options: ControlPlaneOptions): FastifyInstance
         : existing?.apiKeyCiphertext
           ? options.secretCipher.open(existing.apiKeyCiphertext)
           : null;
-    const result = await modelProbe({ baseUrl, model, apiKey });
-    return { ok: result.ok, latency_ms: result.latencyMs, error_code: result.errorCode };
+    const result = await modelProbe({ baseUrl, apiKey });
+    return {
+      ok: result.ok,
+      latency_ms: result.latencyMs,
+      error_code: result.errorCode,
+      models: result.models,
+      model_count: result.models.length,
+    };
   });
 
   app.get('/company-api/v1/sessions', async (request) => {

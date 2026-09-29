@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "bootstrap:platform": "pnpm run build && node dist/bootstrap-platform.js",
     "migrate:business": "pnpm run build && node dist/migrate-business.js",
     "migrate:platform": "pnpm run build && node dist/migrate-platform.js",
     "seed:business": "pnpm run build && node dist/seed-business.js",
